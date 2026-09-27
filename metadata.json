@@ -1,0 +1,6 @@
+{
+  "name": "Lámina - Microdramas y Cortos de Libros Clásicos",
+  "description": "Streaming móvil de microdramas verticales, cortometrajes y video-resúmenes de clásicos de la literatura en dominio público con pipeline de IA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

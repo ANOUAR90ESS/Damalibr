@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-serif: 'Cinzel', serif;
+    --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #090a0f;
+    color: #f1f5f9;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: var(--font-serif);
+  }
+}
+
+/* Custom scrollbar hiding for horizontal shelves and vertical reels */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Safe area insets for mobile devices / Capacitor */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 16px);
+}
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 16px);
+}
+
+/* Ken Burns effect for economic visual playback */
+@keyframes kenburns-1 {
+  0% { transform: scale(1) translate(0, 0); }
+  50% { transform: scale(1.08) translate(-1%, -1%); }
+  100% { transform: scale(1) translate(0, 0); }
+}
+
+@keyframes kenburns-2 {
+  0% { transform: scale(1.06) translate(1%, 0); }
+  50% { transform: scale(1) translate(-1%, 1%); }
+  100% { transform: scale(1.06) translate(1%, 0); }
+}
+
+.animate-kenburns-1 {
+  animation: kenburns-1 14s ease-in-out infinite alternate;
+}
+
+.animate-kenburns-2 {
+  animation: kenburns-2 16s ease-in-out infinite alternate;
+}
