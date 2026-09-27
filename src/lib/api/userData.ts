@@ -5,7 +5,6 @@ import { LibraryItem, UserProfile, UserProgress } from '../../types';
 export type ProfileUpdate = Partial<Pick<UserProfile,
   | 'display_name'
   | 'avatar_url'
-  | 'kids_mode_enabled'
   | 'language'
   | 'daily_goal_minutes'
   | 'streak_days'
@@ -87,4 +86,13 @@ export async function setLike(userId: string, bookId: string, liked: boolean): P
     ? await db.from('likes').upsert({ user_id: userId, book_id: bookId }, { onConflict: 'user_id,book_id', ignoreDuplicates: true })
     : await db.from('likes').delete().eq('user_id', userId).eq('book_id', bookId);
   if (error) throw error;
+}
+
+export type KidsModeError = 'pin_required' | 'wrong_pin' | 'locked';
+
+// Kids mode is switched server-side so the PIN hash never reaches the client.
+export async function setKidsModeRemote(enabled: boolean, pin?: string): Promise<{ ok: boolean; error?: KidsModeError; kids_mode_enabled: boolean }> {
+  const { data, error } = await client().rpc('set_kids_mode', { p_enabled: enabled, p_pin: pin ?? null });
+  if (error) throw error;
+  return data;
 }

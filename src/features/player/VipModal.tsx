@@ -2,9 +2,10 @@ import React from 'react';
 import { useWalletStore } from '../../stores/useWalletStore';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { Crown, Check, Sparkles, X, ShieldCheck, Download, Tv } from 'lucide-react';
+import { formatEur, VIP_PLAN } from '../../lib/products';
 
 export const VipModal: React.FC = () => {
-  const { vipModalOpen, closeVipModal, purchaseVip } = useWalletStore();
+  const { vipModalOpen, closeVipModal, purchaseVip, manageVip, paymentPending, paymentError } = useWalletStore();
   const { user } = useAuthStore();
 
   if (!vipModalOpen) return null;
@@ -64,17 +65,33 @@ export const VipModal: React.FC = () => {
 
         {/* Purchase CTA */}
         {user.is_vip ? (
-          <div className="text-center p-3 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-semibold">
-            ✓ Tu suscripción VIP está activa. ¡Disfruta de todo el catálogo!
+          <div className="space-y-2">
+            <div className="text-center p-3 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-semibold">
+              ✓ Tu suscripción VIP está activa. ¡Disfruta de todo el catálogo!
+            </div>
+            <button
+              onClick={manageVip}
+              disabled={paymentPending}
+              className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-60 text-slate-200 text-xs font-semibold transition-colors"
+            >
+              {paymentPending ? 'Abriendo…' : 'Gestionar o cancelar suscripción'}
+            </button>
           </div>
         ) : (
           <button
             onClick={purchaseVip}
-            className="w-full py-3.5 rounded-xl bg-gradient-to-r from-purple-600 via-purple-500 to-amber-500 hover:from-purple-500 hover:to-amber-400 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 active:scale-98 transition-all"
+            disabled={paymentPending}
+            className="w-full disabled:opacity-60 py-3.5 rounded-xl bg-gradient-to-r from-purple-600 via-purple-500 to-amber-500 hover:from-purple-500 hover:to-amber-400 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 active:scale-98 transition-all"
           >
             <Sparkles className="w-4 h-4" />
-            <span>Suscribirme por 9,99 €/mes</span>
+            <span>{paymentPending ? 'Redirigiendo al pago seguro…' : `Suscribirme por ${formatEur(VIP_PLAN.priceCents)}/mes`}</span>
           </button>
+        )}
+
+        {paymentError && (
+          <p role="alert" className="text-[11px] text-center font-semibold text-rose-400">
+            {paymentError}
+          </p>
         )}
 
         <p className="text-[10px] text-center text-slate-500">

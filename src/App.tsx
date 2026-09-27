@@ -10,6 +10,9 @@ import { AdminPipelineScreen } from './features/pipeline/AdminPipelineScreen';
 import { BottomNavBar } from './features/navigation/BottomNavBar';
 import { VideoPlayer } from './features/player/VideoPlayer';
 import { MiniPlayer } from './features/player/MiniPlayer';
+import { UnlockModal } from './features/player/UnlockModal';
+import { CoinShopModal } from './features/player/CoinShopModal';
+import { VipModal } from './features/player/VipModal';
 
 function AppLayout() {
   const location = useLocation();
@@ -37,6 +40,11 @@ function AppLayout() {
 
       {/* Fullscreen Video Player modal/overlay */}
       <VideoPlayer />
+
+      {/* Wallet modals: global so they open from any screen, above the player */}
+      <UnlockModal />
+      <CoinShopModal />
+      <VipModal />
 
       {/* Fixed Bottom Mobile Navigation Bar */}
       <BottomNavBar />

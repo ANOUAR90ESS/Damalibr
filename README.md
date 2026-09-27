@@ -149,3 +149,22 @@ Para dar acceso de administrador a un usuario:
 ```sql
 update public.profiles set role = 'admin' where id = '<uuid del usuario>';
 ```
+
+### Pagos con Stripe (monedas y VIP)
+
+La economía se valida en el servidor (migración `supabase/migrations/20260928000000_economy.sql`):
+
+- **Desbloqueo de episodios**: RPC `unlock_episode` — comprueba saldo, VIP y episodios gratuitos, descuenta monedas y registra la transacción de forma atómica.
+- **Compras de monedas y VIP**: `POST /api/checkout` crea una sesión de Stripe Checkout con los precios de `src/lib/products.ts` (el cliente solo envía el id del producto). El webhook `POST /api/stripe/webhook` verifica la firma y acredita las monedas (una sola vez por sesión) o activa/renueva/cancela el VIP.
+- **Gestionar/cancelar VIP**: `POST /api/billing-portal` abre el portal de cliente de Stripe.
+- **PIN parental**: se guarda con bcrypt en `kids_pins` (sin acceso desde el cliente) y se comprueba con la RPC `set_kids_mode`; tras 5 intentos fallidos se bloquea 5 minutos. Sin Supabase, el PIN se guarda como hash SHA-256 con sal en el dispositivo.
+
+Configuración:
+
+1. Aplica las migraciones (`supabase db push`).
+2. En Stripe (modo test), copia la **Secret key** en `STRIPE_SECRET_KEY`. No hace falta crear productos: los precios se envían en cada sesión.
+3. Crea un webhook apuntando a `https://tu-dominio/api/stripe/webhook` con los eventos `checkout.session.completed`, `checkout.session.async_payment_succeeded`, `customer.subscription.created`, `customer.subscription.updated` y `customer.subscription.deleted`, y copia su *signing secret* en `STRIPE_WEBHOOK_SECRET`. En local: `stripe listen --forward-to localhost:3000/api/stripe/webhook`.
+4. Copia la *service role key* de Supabase en `SUPABASE_SERVICE_ROLE_KEY` (solo en el servidor) y define `APP_URL` con la URL pública de la app.
+5. Activa el portal de cliente en *Stripe → Settings → Billing → Customer portal*.
+
+Tarjeta de prueba: `4242 4242 4242 4242`, cualquier fecha futura y CVC. Si faltan las claves, las rutas de pago responden 503 y la app lo indica al usuario; en modo demo local las compras siguen siendo simuladas.

@@ -3,7 +3,10 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
+import Stripe from 'stripe';
+import { createClient } from '@supabase/supabase-js';
 import { createRateLimiter, validateAnalyzeInput } from './server/guards';
+import { createPaymentsRouter } from './server/paymentsRouter';
 
 dotenv.config();
 
@@ -12,6 +15,24 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
+
+// Payments: Stripe Checkout + webhook. Mounted before express.json() because the
+// webhook needs the raw request body to verify Stripe's signature.
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const paymentsDeps =
+  process.env.STRIPE_SECRET_KEY && process.env.SUPABASE_SERVICE_ROLE_KEY && supabaseUrl
+    ? {
+        stripe: new Stripe(process.env.STRIPE_SECRET_KEY),
+        supabaseAdmin: createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+          auth: { persistSession: false, autoRefreshToken: false },
+        }),
+      }
+    : null;
+if (!paymentsDeps) {
+  console.warn('Pagos desactivados: faltan STRIPE_SECRET_KEY, SUPABASE_SERVICE_ROLE_KEY o SUPABASE_URL.');
+}
+app.use('/api/checkout', createRateLimiter({ windowMs: 60_000, max: 10 }));
+app.use('/api', createPaymentsRouter(paymentsDeps, process.env.STRIPE_WEBHOOK_SECRET));
 
 app.use(express.json({ limit: '1mb' }));
 

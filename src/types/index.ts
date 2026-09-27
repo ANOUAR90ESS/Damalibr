@@ -140,7 +140,8 @@ export interface UserProfile {
   avatar_url: string;
   is_vip: boolean;
   kids_mode_enabled: boolean;
-  kids_pin?: string;
+  /** true once a parental PIN has been created */
+  kids_pin_set?: boolean;
   language: 'es-ES' | 'es-LA';
   daily_goal_minutes: number;
   streak_days: number;

@@ -4,6 +4,7 @@ import { fetchProfile } from './api/userData';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useLibraryStore } from '../stores/useLibraryStore';
 import { useCatalogStore } from '../stores/useCatalogStore';
+import { useWalletStore } from '../stores/useWalletStore';
 
 // undefined = no session processed yet, null = signed out
 let currentUserId: string | null | undefined = undefined;
@@ -19,6 +20,7 @@ async function applySession(session: Session | null) {
   if (!session || !userId) {
     useAuthStore.getState().clearRemoteSession();
     useLibraryStore.getState().resetToLocal();
+    useWalletStore.getState().resetToLocal();
     return;
   }
 
@@ -39,7 +41,36 @@ async function applySession(session: Session | null) {
     console.warn('No se pudo cargar el perfil desde Supabase', e);
     useAuthStore.getState().applyRemoteSession({ userId, email: session.user.email ?? '', profile: {}, isVip: false });
   }
-  await useLibraryStore.getState().loadRemote(userId);
+  await Promise.all([
+    useLibraryStore.getState().loadRemote(userId),
+    useWalletStore.getState().loadRemote(userId),
+  ]);
+
+  if (new URLSearchParams(window.location.search).get('checkout') === 'success') {
+    void pollAfterCheckout(userId);
+  }
+}
+
+async function refreshAccount(userId: string) {
+  const { profile, isVip } = await fetchProfile(userId);
+  const auth = useAuthStore.getState();
+  if (auth.remoteUserId !== userId) return;
+  auth.applyRemoteSession({ userId, email: auth.user.email, profile: { ...profile, display_name: auth.user.display_name, avatar_url: auth.user.avatar_url }, isVip });
+  await useWalletStore.getState().refreshRemote();
+}
+
+// After Stripe Checkout the webhook may take a few seconds to credit coins or
+// activate VIP, so refresh the account a few times.
+async function pollAfterCheckout(userId: string) {
+  for (let i = 0; i < 5; i++) {
+    await new Promise(r => setTimeout(r, 2000));
+    if (currentUserId !== userId) return;
+    try {
+      await refreshAccount(userId);
+    } catch (e) {
+      console.warn('No se pudo actualizar la cuenta tras el pago', e);
+    }
+  }
 }
 
 // Wires Supabase auth into the stores and loads the remote catalog.

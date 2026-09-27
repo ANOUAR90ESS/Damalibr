@@ -3,9 +3,6 @@ import Hls from 'hls.js';
 import { usePlayerStore } from '../../stores/usePlayerStore';
 import { PlayerControls } from './PlayerControls';
 import { FormatSwitcher } from './FormatSwitcher';
-import { UnlockModal } from './UnlockModal';
-import { CoinShopModal } from './CoinShopModal';
-import { VipModal } from './VipModal';
 import { useCatalogStore } from '../../stores/useCatalogStore';
 import { useWalletStore } from '../../stores/useWalletStore';
 import { Lock, Play, X, Sparkles, Volume2, VolumeX } from 'lucide-react';
@@ -325,13 +322,6 @@ export const VideoPlayer: React.FC = () => {
       {formatSwitcherOpen && (
         <FormatSwitcher onClose={() => setFormatSwitcherOpen(false)} />
       )}
-
-      {/* Unlock Episode Modal */}
-      <UnlockModal />
-
-      {/* Coin Shop & VIP Modals */}
-      <CoinShopModal />
-      <VipModal />
     </div>
   );
 };

@@ -9,7 +9,9 @@ export const UnlockModal: React.FC = () => {
     coins, 
     unlockEpisode, 
     openCoinShopModal, 
-    openVipModal 
+    openVipModal,
+    paymentPending,
+    paymentError,
   } = useWalletStore();
 
   if (!unlockModalEpisode) return null;
@@ -17,8 +19,8 @@ export const UnlockModal: React.FC = () => {
   const cost = unlockModalEpisode.coin_price || 10;
   const hasEnoughCoins = coins >= cost;
 
-  const handleUnlock = () => {
-    const success = unlockEpisode(unlockModalEpisode);
+  const handleUnlock = async () => {
+    const success = await unlockEpisode(unlockModalEpisode);
     if (success) {
       closeUnlockModal();
     }
@@ -67,10 +69,11 @@ export const UnlockModal: React.FC = () => {
         {hasEnoughCoins ? (
           <button
             onClick={handleUnlock}
-            className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 active:scale-98 transition-all"
+            disabled={paymentPending}
+            className="w-full disabled:opacity-60 py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 active:scale-98 transition-all"
           >
             <Coins className="w-4 h-4" />
-            <span>Desbloquear por {cost} monedas</span>
+            <span>{paymentPending ? 'Desbloqueando…' : `Desbloquear por ${cost} monedas`}</span>
           </button>
         ) : (
           <button
@@ -80,6 +83,12 @@ export const UnlockModal: React.FC = () => {
             <Coins className="w-4 h-4" />
             <span>Necesitas {cost - coins} monedas más (Comprar)</span>
           </button>
+        )}
+
+        {paymentError && (
+          <p role="alert" className="text-[11px] text-center font-semibold text-rose-400">
+            {paymentError}
+          </p>
         )}
 
         {/* VIP Alternative Option */}
