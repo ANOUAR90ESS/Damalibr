@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SEED_BOOKS, SEED_ADAPTATIONS, SEED_EPISODES } from '../../data/seedBooks';
+import { useCatalogStore } from '../../stores/useCatalogStore';
 import { Book, Episode } from '../../types';
 import { usePlayerStore } from '../../stores/usePlayerStore';
 import { useLibraryStore } from '../../stores/useLibraryStore';
@@ -11,6 +11,7 @@ import { OnboardingModal } from '../onboarding/OnboardingModal';
 import { Play, Sparkles, Star, Clock, Bookmark, ChevronRight, HelpCircle } from 'lucide-react';
 
 export const HomeScreen: React.FC = () => {
+  const { books, adaptationsByBook, episodesByAdaptation } = useCatalogStore();
   const navigate = useNavigate();
   const { playEpisode } = usePlayerStore();
   const { items, progress, toggleBookmark } = useLibraryStore();
@@ -23,27 +24,27 @@ export const HomeScreen: React.FC = () => {
 
   // Filter books for Kids mode if active
   const filteredBooks = user.kids_mode_enabled 
-    ? SEED_BOOKS.filter(b => b.kids_friendly)
-    : SEED_BOOKS;
+    ? books.filter(b => b.kids_friendly)
+    : books;
 
-  const heroBook = filteredBooks[0] || SEED_BOOKS[0];
+  const heroBook = filteredBooks[0] || books[0];
 
   // Continue watching list from library progress
   const continueWatchingItems = Object.values(items)
     .filter(item => item.state === 'started')
     .map(item => {
-      const book = SEED_BOOKS.find(b => b.id === item.book_id);
+      const book = books.find(b => b.id === item.book_id);
       const userProg = Object.values(progress).find(p => p.book_id === item.book_id && !p.completed);
       return { book, userProg };
     })
     .filter((entry): entry is { book: Book; userProg: typeof progress[string] | undefined } => Boolean(entry.book));
 
   const handlePlayBookDefault = (book: Book) => {
-    const adaptations = SEED_ADAPTATIONS[book.id] || [];
+    const adaptations = adaptationsByBook[book.id] || [];
     const dramaAdaptation = adaptations.find(a => a.format === 'drama') || adaptations[0];
     if (!dramaAdaptation) return;
 
-    const episodes = SEED_EPISODES[dramaAdaptation.id] || [];
+    const episodes = episodesByAdaptation[dramaAdaptation.id] || [];
     const firstEp = episodes[0];
     if (firstEp) {
       playEpisode(book, dramaAdaptation, firstEp, 0);
@@ -164,9 +165,9 @@ export const HomeScreen: React.FC = () => {
 
             <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
               {continueWatchingItems.map(({ book, userProg }) => {
-                const bookAdaptations = SEED_ADAPTATIONS[book.id] || [];
+                const bookAdaptations = adaptationsByBook[book.id] || [];
                 const currentAdapt = bookAdaptations.find(a => a.id === userProg?.adaptation_id) || bookAdaptations[0];
-                const episodes = currentAdapt ? (SEED_EPISODES[currentAdapt.id] || []) : [];
+                const episodes = currentAdapt ? (episodesByAdaptation[currentAdapt.id] || []) : [];
                 const currentEp = episodes.find(e => e.id === userProg?.episode_id) || episodes[0];
 
                 return (
@@ -239,7 +240,7 @@ export const HomeScreen: React.FC = () => {
 
           <div className="flex gap-3.5 overflow-x-auto no-scrollbar pb-2">
             {filteredBooks.map((book) => {
-              const bookAdaptations = SEED_ADAPTATIONS[book.id] || [];
+              const bookAdaptations = adaptationsByBook[book.id] || [];
               const dramaAdapt = bookAdaptations.find(a => a.format === 'drama');
 
               return (
@@ -311,7 +312,7 @@ export const HomeScreen: React.FC = () => {
 
           <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
             {filteredBooks.map((book) => {
-              const bookAdaptations = SEED_ADAPTATIONS[book.id] || [];
+              const bookAdaptations = adaptationsByBook[book.id] || [];
               const filmAdapt = bookAdaptations.find(a => a.format === 'film');
 
               return (
@@ -374,9 +375,9 @@ export const HomeScreen: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {filteredBooks.slice(0, 4).map((book) => {
-              const bookAdaptations = SEED_ADAPTATIONS[book.id] || [];
+              const bookAdaptations = adaptationsByBook[book.id] || [];
               const sumAdapt = bookAdaptations.find(a => a.format === 'summary');
-              const sumEp = sumAdapt ? (SEED_EPISODES[sumAdapt.id] || [])[0] : null;
+              const sumEp = sumAdapt ? (episodesByAdaptation[sumAdapt.id] || [])[0] : null;
 
               return (
                 <div

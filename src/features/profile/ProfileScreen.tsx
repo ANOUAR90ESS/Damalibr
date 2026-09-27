@@ -11,6 +11,7 @@ export const ProfileScreen: React.FC = () => {
   const { 
     user, 
     isAuthenticated, 
+    authMode,
     loginWithEmail, 
     loginWithGoogle, 
     logout,
@@ -27,6 +28,8 @@ export const ProfileScreen: React.FC = () => {
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authEmail, setAuthEmail] = useState('');
   const [authName, setAuthName] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authStatus, setAuthStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
 
@@ -42,11 +45,35 @@ export const ProfileScreen: React.FC = () => {
     }
   };
 
-  const handleEmailAuthSubmit = (e: React.FormEvent) => {
+  const openAuthModal = () => {
+    setAuthStatus(null);
+    setAuthModalOpen(true);
+  };
+
+  // In local demo mode login is instant; with Supabase the email flow sends a magic link
+  // and Google redirects away, so we keep the modal open to show the result.
+  const handleAuthResult = (result: { ok: boolean; message: string }) => {
+    setAuthLoading(false);
+    if (result.ok && authMode === 'local') {
+      setAuthModalOpen(false);
+      return;
+    }
+    setAuthStatus(result);
+  };
+
+  const handleEmailAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!authEmail) return;
-    loginWithEmail(authEmail, authName);
-    setAuthModalOpen(false);
+    if (!authEmail || authLoading) return;
+    setAuthLoading(true);
+    setAuthStatus(null);
+    handleAuthResult(await loginWithEmail(authEmail, authName));
+  };
+
+  const handleGoogleLogin = async () => {
+    if (authLoading) return;
+    setAuthLoading(true);
+    setAuthStatus(null);
+    handleAuthResult(await loginWithGoogle());
   };
 
   return (
@@ -87,14 +114,14 @@ export const ProfileScreen: React.FC = () => {
           <div>
             {isAuthenticated ? (
               <button
-                onClick={() => setAuthModalOpen(true)}
+                onClick={openAuthModal}
                 className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
               >
                 Cuenta
               </button>
             ) : (
               <button
-                onClick={() => setAuthModalOpen(true)}
+                onClick={openAuthModal}
                 className="px-3.5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold shadow-lg"
               >
                 Iniciar sesión
@@ -314,8 +341,9 @@ export const ProfileScreen: React.FC = () => {
 
             {/* Google Login Button */}
             <button
-              onClick={() => { loginWithGoogle(); setAuthModalOpen(false); }}
-              className="w-full py-3 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center gap-2.5 shadow active:scale-98 transition-all"
+              onClick={handleGoogleLogin}
+              disabled={authLoading}
+              className="w-full disabled:opacity-60 py-3 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center gap-2.5 shadow active:scale-98 transition-all"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -359,11 +387,27 @@ export const ProfileScreen: React.FC = () => {
 
               <button
                 type="submit"
-                className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-colors"
+                disabled={authLoading}
+                className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-slate-950 font-bold text-xs transition-colors"
               >
-                Acceder a mi cuenta
+                {authLoading ? 'Enviando…' : authMode === 'supabase' ? 'Enviarme un enlace de acceso' : 'Acceder a mi cuenta'}
               </button>
             </form>
+
+            {authStatus && (
+              <p
+                role="status"
+                className={`text-[11px] font-semibold text-center ${authStatus.ok ? 'text-emerald-400' : 'text-rose-400'}`}
+              >
+                {authStatus.message}
+              </p>
+            )}
+
+            {authMode === 'local' && (
+              <p className="text-[10px] text-slate-500 text-center">
+                Modo demo local: los datos se guardan solo en este dispositivo.
+              </p>
+            )}
           </div>
         </div>
       )}

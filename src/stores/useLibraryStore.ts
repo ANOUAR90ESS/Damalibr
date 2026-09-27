@@ -1,13 +1,22 @@
 import { create } from 'zustand';
 import { storageService } from '../lib/supabase';
+import { fetchLibrary, setLike, upsertLibraryItem, upsertProgress } from '../lib/api/userData';
 import { LibraryItem, UserProgress } from '../types';
+
+const LOCAL_USER_ID = 'usr-lamina-demo';
+// Playback progress is saved on every tick; only push it to the server this often.
+const PROGRESS_SYNC_INTERVAL_MS = 15_000;
 
 interface LibraryState {
   items: Record<string, LibraryItem>; // key: book_id
   progress: Record<string, UserProgress>; // key: `${book_id}_${adaptation_id}_${episode_id}`
   likedBookIds: string[];
+  /** Supabase user id when the library is synced with a real account */
+  remoteUserId: string | null;
 
   // Actions
+  loadRemote: (userId: string) => Promise<void>;
+  resetToLocal: () => void;
   setBookState: (bookId: string, state: 'to_watch' | 'started' | 'finished') => void;
   toggleBookmark: (bookId: string) => void;
   toggleLike: (bookId: string) => void;
@@ -60,15 +69,76 @@ const DEFAULT_PROGRESS: Record<string, UserProgress> = {
   }
 };
 
+const lastProgressSync = new Map<string, number>();
+
+function warn(e: unknown) {
+  console.warn('No se pudo sincronizar la biblioteca', e);
+}
+
+function loadLocalState() {
+  return {
+    items: storageService.get<Record<string, LibraryItem>>('library_items', DEFAULT_LIBRARY_ITEMS),
+    progress: storageService.get<Record<string, UserProgress>>('user_progress', DEFAULT_PROGRESS),
+    likedBookIds: storageService.get<string[]>('liked_books', ['book-quijote', 'book-regenta']),
+  };
+}
+
+const progressKey = (p: Pick<UserProgress, 'book_id' | 'adaptation_id' | 'episode_id'>) =>
+  `${p.book_id}_${p.adaptation_id}_${p.episode_id}`;
+
+// Guests keep their library in localStorage; signed-in users sync each change to Supabase.
+function persistItem(items: Record<string, LibraryItem>, bookId: string) {
+  const { remoteUserId } = useLibraryStore.getState();
+  if (!remoteUserId) return storageService.set('library_items', items);
+  upsertLibraryItem(items[bookId]).catch(warn);
+}
+
+function persistLike(likedBookIds: string[], bookId: string) {
+  const { remoteUserId } = useLibraryStore.getState();
+  if (!remoteUserId) return storageService.set('liked_books', likedBookIds);
+  setLike(remoteUserId, bookId, likedBookIds.includes(bookId)).catch(warn);
+}
+
+function persistProgress(progress: Record<string, UserProgress>, key: string) {
+  const { remoteUserId } = useLibraryStore.getState();
+  if (!remoteUserId) return storageService.set('user_progress', progress);
+
+  const entry = progress[key];
+  const now = Date.now();
+  if (!entry.completed && now - (lastProgressSync.get(key) ?? 0) < PROGRESS_SYNC_INTERVAL_MS) return;
+  lastProgressSync.set(key, now);
+  upsertProgress(entry).catch(warn);
+}
+
 export const useLibraryStore = create<LibraryState>((set, get) => ({
-  items: storageService.get<Record<string, LibraryItem>>('library_items', DEFAULT_LIBRARY_ITEMS),
-  progress: storageService.get<Record<string, UserProgress>>('user_progress', DEFAULT_PROGRESS),
-  likedBookIds: storageService.get<string[]>('liked_books', ['book-quijote', 'book-regenta']),
+  ...loadLocalState(),
+  remoteUserId: null,
+
+  loadRemote: async (userId: string) => {
+    lastProgressSync.clear();
+    set({ remoteUserId: userId, items: {}, progress: {}, likedBookIds: [] });
+    try {
+      const remote = await fetchLibrary(userId);
+      if (get().remoteUserId !== userId) return; // signed out meanwhile
+      set({
+        items: Object.fromEntries(remote.items.map(i => [i.book_id, i])),
+        progress: Object.fromEntries(remote.progress.map(p => [progressKey(p), p])),
+        likedBookIds: remote.likedBookIds,
+      });
+    } catch (e) {
+      warn(e);
+    }
+  },
+
+  resetToLocal: () => {
+    lastProgressSync.clear();
+    set({ remoteUserId: null, ...loadLocalState() });
+  },
 
   setBookState: (bookId: string, state: 'to_watch' | 'started' | 'finished') => {
     const items = { ...get().items };
     const current = items[bookId] || {
-      user_id: 'usr-lamina-demo',
+      user_id: get().remoteUserId ?? LOCAL_USER_ID,
       book_id: bookId,
       state: 'to_watch',
       is_bookmarked: false,
@@ -82,14 +152,14 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       updated_at: new Date().toISOString(),
     };
 
-    storageService.set('library_items', items);
+    persistItem(items, bookId);
     set({ items });
   },
 
   toggleBookmark: (bookId: string) => {
     const items = { ...get().items };
     const current = items[bookId] || {
-      user_id: 'usr-lamina-demo',
+      user_id: get().remoteUserId ?? LOCAL_USER_ID,
       book_id: bookId,
       state: 'to_watch',
       is_bookmarked: false,
@@ -103,7 +173,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       updated_at: new Date().toISOString(),
     };
 
-    storageService.set('library_items', items);
+    persistItem(items, bookId);
     set({ items });
   },
 
@@ -113,7 +183,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       ? likedBookIds.filter(id => id !== bookId)
       : [...likedBookIds, bookId];
 
-    storageService.set('liked_books', updated);
+    persistLike(updated, bookId);
     set({ likedBookIds: updated });
   },
 
@@ -122,7 +192,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const key = `${bookId}_${adaptationId}_${episodeId}`;
 
     progress[key] = {
-      user_id: 'usr-lamina-demo',
+      user_id: get().remoteUserId ?? LOCAL_USER_ID,
       book_id: bookId,
       adaptation_id: adaptationId,
       episode_id: episodeId,
@@ -135,18 +205,18 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     const items = { ...get().items };
     if (!items[bookId] || items[bookId].state === 'to_watch') {
       items[bookId] = {
-        user_id: 'usr-lamina-demo',
+        user_id: get().remoteUserId ?? LOCAL_USER_ID,
         book_id: bookId,
         state: 'started',
         is_bookmarked: items[bookId]?.is_bookmarked || false,
         is_downloaded: items[bookId]?.is_downloaded || false,
         updated_at: new Date().toISOString(),
       };
-      storageService.set('library_items', items);
+      persistItem(items, bookId);
       set({ items });
     }
 
-    storageService.set('user_progress', progress);
+    persistProgress(progress, key);
     set({ progress });
   },
 
@@ -164,7 +234,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
   downloadEpisodeOffline: (bookId: string, _episodeId: string, sizeMb = 35.4) => {
     const items = { ...get().items };
     const current = items[bookId] || {
-      user_id: 'usr-lamina-demo',
+      user_id: get().remoteUserId ?? LOCAL_USER_ID,
       book_id: bookId,
       state: 'started',
       is_bookmarked: false,
@@ -179,7 +249,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
       updated_at: new Date().toISOString(),
     };
 
-    storageService.set('library_items', items);
+    persistItem(items, bookId);
     set({ items });
   },
 
@@ -192,7 +262,7 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
         download_size_mb: 0,
         updated_at: new Date().toISOString(),
       };
-      storageService.set('library_items', items);
+      persistItem(items, bookId);
       set({ items });
     }
   },

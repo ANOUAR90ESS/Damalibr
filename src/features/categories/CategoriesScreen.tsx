@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SEED_BOOKS } from '../../data/seedBooks';
+import { useCatalogStore } from '../../stores/useCatalogStore';
 import { Book } from '../../types';
 import { Search, Trophy, Filter, Star, Clock, Sparkles } from 'lucide-react';
 import { TopNavBar } from '../navigation/TopNavBar';
 import { useAuthStore } from '../../stores/useAuthStore';
 
 export const CategoriesScreen: React.FC = () => {
+  const { books } = useCatalogStore();
   const navigate = useNavigate();
   const { user } = useAuthStore();
 
@@ -21,8 +22,8 @@ export const CategoriesScreen: React.FC = () => {
 
   const filteredBooks = useMemo(() => {
     let list = user.kids_mode_enabled 
-      ? SEED_BOOKS.filter(b => b.kids_friendly) 
-      : SEED_BOOKS;
+      ? books.filter(b => b.kids_friendly) 
+      : books;
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -43,17 +44,17 @@ export const CategoriesScreen: React.FC = () => {
     }
 
     return list;
-  }, [searchQuery, selectedGenre, selectedEra, user.kids_mode_enabled]);
+  }, [books, searchQuery, selectedGenre, selectedEra, user.kids_mode_enabled]);
 
   // Sorted books for rankings
   const rankedBooks = useMemo(() => {
-    return [...SEED_BOOKS].sort((a, b) => {
+    return [...books].sort((a, b) => {
       if (rankingTimeframe === 'dia') return b.total_views * 0.08 - a.total_views * 0.08;
       if (rankingTimeframe === 'semana') return b.total_views * 0.25 - a.total_views * 0.25;
       if (rankingTimeframe === 'mes') return b.total_views * 0.6 - a.total_views * 0.6;
       return b.total_views - a.total_views;
     });
-  }, [rankingTimeframe]);
+  }, [books, rankingTimeframe]);
 
   return (
     <div className="min-h-screen bg-[#090a0f] text-slate-100 pb-28">

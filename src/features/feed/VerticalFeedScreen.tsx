@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SEED_BOOKS, SEED_ADAPTATIONS, SEED_EPISODES } from '../../data/seedBooks';
+import { useCatalogStore } from '../../stores/useCatalogStore';
 import { Episode, Book, Adaptation, ScriptLine } from '../../types';
 import { usePlayerStore } from '../../stores/usePlayerStore';
 import { useLibraryStore } from '../../stores/useLibraryStore';
@@ -17,26 +17,27 @@ interface FeedItem {
 }
 
 export const VerticalFeedScreen: React.FC = () => {
+  const { books, adaptationsByBook, episodesByAdaptation } = useCatalogStore();
   const navigate = useNavigate();
   const { playEpisode } = usePlayerStore();
   const { items, toggleBookmark } = useLibraryStore();
   const { isEpisodeAccessible, openUnlockModal } = useWalletStore();
 
   // Flatten drama episodes across classics for the feed
-  const [feedItems] = useState<FeedItem[]>(() => {
+  const feedItems = useMemo<FeedItem[]>(() => {
     const list: FeedItem[] = [];
-    SEED_BOOKS.forEach(book => {
-      const adaptations = SEED_ADAPTATIONS[book.id] || [];
+    books.forEach(book => {
+      const adaptations = adaptationsByBook[book.id] || [];
       const dramaAdapt = adaptations.find(a => a.format === 'drama');
       if (dramaAdapt) {
-        const eps = SEED_EPISODES[dramaAdapt.id] || [];
+        const eps = episodesByAdaptation[dramaAdapt.id] || [];
         eps.forEach(ep => {
           list.push({ book, adaptation: dramaAdapt, episode: ep });
         });
       }
     });
     return list;
-  });
+  }, [books, adaptationsByBook, episodesByAdaptation]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);

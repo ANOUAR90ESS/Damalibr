@@ -41,7 +41,7 @@ Para actualizar dependencias de forma intencionada, ejecuta `bun install` con Bu
 
 - **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS v4.
 - **Enrutamiento**: React Router v7 con arquitectura modular por características (`/src/features/*`).
-- **Gestión de Estado**: Zustand con persistencia en LocalStorage (`useAuthStore`, `usePlayerStore`, `useWalletStore`, `useLibraryStore`, `usePipelineStore`).
+- **Gestión de Estado**: Zustand (`useAuthStore`, `useCatalogStore`, `usePlayerStore`, `useWalletStore`, `useLibraryStore`, `usePipelineStore`). Con Supabase configurado, el catálogo, el perfil, la biblioteca, el progreso y los «me gusta» se sincronizan con la base de datos; sin Supabase la app funciona en modo demo local con LocalStorage.
 - **Reproducción de Video**: HLS.js con soporte adaptive bitrate y motor alternativo cinemático Ken Burns con subtítulos sincronizados por personaje y emoción.
 - **Backend / Pipeline IA**: Express + `@google/genai` (Gemini 3.8 Flash) en servidor para análisis dramatúrgico, extracción de personajes y generación de guiones con cliffhangers.
 - **Base de Datos & Auth**: Supabase (PostgreSQL, Row Level Security, Storage, Auth con Google y Email).
@@ -126,4 +126,26 @@ VITE_SUPABASE_URL="https://tu-proyecto.supabase.co"
 VITE_SUPABASE_ANON_KEY="tu-anon-key"
 ```
 
-El script SQL completo con RLS se encuentra en `src/lib/supabase-schema.sql`.
+Sin `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` la app arranca en **modo demo local** (sin cuentas reales, datos en LocalStorage).
+
+### Supabase
+
+- Esquema + RLS: `supabase/migrations/20260927000000_init.sql`. Cada usuario nuevo recibe automáticamente perfil, suscripción gratuita y 60 monedas de bienvenida (trigger `on_auth_user_created`).
+- Catálogo inicial: `supabase/seed.sql`, generado desde `src/data/seedBooks.ts` con `bun run db:seed` (un test falla si queda desactualizado).
+- Los usuarios solo pueden leer/escribir sus propios datos. Monedas, transacciones y suscripciones son de solo lectura desde el cliente, y el campo `profiles.role` solo lo puede cambiar el service role.
+
+Desarrollo local con la [CLI de Supabase](https://supabase.com/docs/guides/local-development):
+
+```bash
+supabase init        # solo la primera vez (crea supabase/config.toml)
+supabase start       # aplica migraciones + seed; muestra la URL y la anon key
+# Copia API URL y anon key en .env como VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY
+```
+
+Proyecto en la nube: `supabase link --project-ref <ref>` y `supabase db push`, y después ejecuta `supabase/seed.sql` en el SQL Editor. Para el login activa los proveedores **Email** y **Google** en *Authentication → Providers* y añade `https://tu-dominio/profile` a las *Redirect URLs*.
+
+Para dar acceso de administrador a un usuario:
+
+```sql
+update public.profiles set role = 'admin' where id = '<uuid del usuario>';
+```

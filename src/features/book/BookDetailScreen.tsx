@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { SEED_BOOKS, SEED_CHARACTERS, SEED_ADAPTATIONS, SEED_EPISODES } from '../../data/seedBooks';
+import { useCatalogStore } from '../../stores/useCatalogStore';
 import { BookFormat } from '../../types';
 import { usePlayerStore } from '../../stores/usePlayerStore';
 import { useLibraryStore } from '../../stores/useLibraryStore';
@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 
 export const BookDetailScreen: React.FC = () => {
+  const { books, charactersByBook, adaptationsByBook, episodesByAdaptation } = useCatalogStore();
   const { bookId } = useParams<{ bookId: string }>();
   const navigate = useNavigate();
   const { playEpisode } = usePlayerStore();
@@ -19,12 +20,12 @@ export const BookDetailScreen: React.FC = () => {
 
   const [selectedFormat, setSelectedFormat] = useState<BookFormat>('drama');
 
-  const book = SEED_BOOKS.find(b => b.id === bookId) || SEED_BOOKS[0];
-  const characters = SEED_CHARACTERS[book.id] || [];
-  const adaptations = SEED_ADAPTATIONS[book.id] || [];
+  const book = books.find(b => b.id === bookId) || books[0];
+  const characters = charactersByBook[book.id] || [];
+  const adaptations = adaptationsByBook[book.id] || [];
 
   const currentAdaptation = adaptations.find(a => a.format === selectedFormat) || adaptations[0];
-  const episodes = currentAdaptation ? (SEED_EPISODES[currentAdaptation.id] || []) : [];
+  const episodes = currentAdaptation ? (episodesByAdaptation[currentAdaptation.id] || []) : [];
 
   const isBookmarked = items[book.id]?.is_bookmarked;
   const isDownloaded = isBookDownloaded(book.id);

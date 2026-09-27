@@ -6,11 +6,12 @@ import { FormatSwitcher } from './FormatSwitcher';
 import { UnlockModal } from './UnlockModal';
 import { CoinShopModal } from './CoinShopModal';
 import { VipModal } from './VipModal';
-import { SEED_EPISODES } from '../../data/seedBooks';
+import { useCatalogStore } from '../../stores/useCatalogStore';
 import { useWalletStore } from '../../stores/useWalletStore';
 import { Lock, Play, X, Sparkles, Volume2, VolumeX } from 'lucide-react';
 
 export const VideoPlayer: React.FC = () => {
+  const { episodesByAdaptation } = useCatalogStore();
   const {
     currentBook,
     currentAdaptation,
@@ -164,7 +165,7 @@ export const VideoPlayer: React.FC = () => {
   };
 
   const isVertical = currentAdaptation.format === 'drama' || currentAdaptation.format === 'summary';
-  const episodes = SEED_EPISODES[currentAdaptation.id] || [];
+  const episodes = episodesByAdaptation[currentAdaptation.id] || [];
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex items-center justify-center overflow-hidden select-none">

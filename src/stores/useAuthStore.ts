@@ -1,18 +1,34 @@
 import { create } from 'zustand';
 import { UserProfile } from '../types';
-import { storageService } from '../lib/supabase';
+import { isSupabaseConfigured, storageService, supabase } from '../lib/supabase';
+import { ProfileUpdate, updateProfile } from '../lib/api/userData';
+
+export interface AuthResult {
+  ok: boolean;
+  message: string;
+}
 
 interface AuthState {
   user: UserProfile;
   isAuthenticated: boolean;
+  /** 'supabase' when real accounts are available, 'local' for the offline demo mode */
+  authMode: 'local' | 'supabase';
+  /** false until the initial Supabase session check has finished */
+  authReady: boolean;
+  /** Supabase user id when signed in with a real account */
+  remoteUserId: string | null;
+  role: 'user' | 'admin';
   loginModalOpen: boolean;
   kidsPinModalOpen: boolean;
   pendingKidsPinAction: (() => void) | null;
 
   // Actions
-  loginWithEmail: (email: string, name?: string) => void;
-  loginWithGoogle: () => void;
-  logout: () => void;
+  loginWithEmail: (email: string, name?: string) => Promise<AuthResult>;
+  loginWithGoogle: () => Promise<AuthResult>;
+  logout: () => Promise<void>;
+  applyRemoteSession: (session: { userId: string; email: string; profile: Partial<UserProfile> & { role?: 'user' | 'admin' }; isVip: boolean }) => void;
+  clearRemoteSession: () => void;
+  markAuthReady: () => void;
   setLoginModalOpen: (open: boolean) => void;
   toggleKidsMode: () => void;
   setKidsPin: (pin: string) => void;
@@ -41,14 +57,42 @@ const DEFAULT_USER: UserProfile = {
   total_episodes_completed: 24,
 };
 
+// Saves the profile locally and, when signed in with Supabase, syncs the given fields.
+function persistProfile(updated: UserProfile, remotePatch?: ProfileUpdate) {
+  storageService.set('profile', updated);
+  const remoteUserId = useAuthStore.getState().remoteUserId;
+  if (remoteUserId && remotePatch) {
+    updateProfile(remoteUserId, remotePatch).catch(e => console.warn('No se pudo sincronizar el perfil', e));
+  }
+}
+
+const authRedirectUrl = () => `${window.location.origin}/profile`;
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: storageService.get<UserProfile>('profile', DEFAULT_USER),
-  isAuthenticated: true,
+  // In local demo mode the user is always "signed in"; with Supabase we wait for a real session.
+  isAuthenticated: !isSupabaseConfigured,
+  authMode: isSupabaseConfigured ? 'supabase' : 'local',
+  authReady: !isSupabaseConfigured,
+  remoteUserId: null,
+  role: 'user',
   loginModalOpen: false,
   kidsPinModalOpen: false,
   pendingKidsPinAction: null,
 
-  loginWithEmail: (email: string, name?: string) => {
+  loginWithEmail: async (email: string, name?: string) => {
+    if (supabase) {
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: authRedirectUrl(),
+          data: name ? { full_name: name } : undefined,
+        },
+      });
+      if (error) return { ok: false, message: error.message };
+      return { ok: true, message: `Te hemos enviado un enlace de acceso a ${email}. Ábrelo para entrar.` };
+    }
+
     const updatedUser: UserProfile = {
       ...get().user,
       email,
@@ -56,9 +100,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     };
     storageService.set('profile', updatedUser);
     set({ user: updatedUser, isAuthenticated: true, loginModalOpen: false });
+    return { ok: true, message: 'Sesión iniciada en modo local.' };
   },
 
-  loginWithGoogle: () => {
+  loginWithGoogle: async () => {
+    if (supabase) {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: authRedirectUrl() },
+      });
+      if (error) return { ok: false, message: error.message };
+      return { ok: true, message: 'Redirigiendo a Google…' };
+    }
+
     const updatedUser: UserProfile = {
       ...get().user,
       display_name: 'Usuario Google',
@@ -67,11 +121,66 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     };
     storageService.set('profile', updatedUser);
     set({ user: updatedUser, isAuthenticated: true, loginModalOpen: false });
+    return { ok: true, message: 'Sesión iniciada en modo local.' };
   },
 
-  logout: () => {
+  logout: async () => {
+    if (supabase) {
+      const { error } = await supabase.auth.signOut();
+      if (error) console.warn('Error al cerrar sesión', error);
+      get().clearRemoteSession();
+      return;
+    }
     set({ isAuthenticated: false });
   },
+
+  applyRemoteSession: ({ userId, email, profile, isVip }) => {
+    const local = get().user;
+    const user: UserProfile = {
+      ...DEFAULT_USER,
+      id: userId,
+      email,
+      display_name: profile.display_name || email.split('@')[0],
+      avatar_url: profile.avatar_url || DEFAULT_USER.avatar_url,
+      is_vip: isVip,
+      kids_mode_enabled: profile.kids_mode_enabled ?? false,
+      // The kids PIN stays on this device until it is moved server-side.
+      kids_pin: local.kids_pin,
+      language: profile.language || 'es-ES',
+      daily_goal_minutes: profile.daily_goal_minutes ?? DEFAULT_USER.daily_goal_minutes,
+      streak_days: profile.streak_days ?? 0,
+      minutes_watched_today: profile.minutes_watched_today ?? 0,
+      total_minutes_watched: profile.total_minutes_watched ?? 0,
+      total_episodes_completed: profile.total_episodes_completed ?? 0,
+    };
+    storageService.set('profile', user);
+    set({
+      user,
+      isAuthenticated: true,
+      authReady: true,
+      remoteUserId: userId,
+      role: profile.role || 'user',
+      loginModalOpen: false,
+    });
+  },
+
+  clearRemoteSession: () => {
+    const guest: UserProfile = {
+      ...DEFAULT_USER,
+      id: 'guest',
+      email: '',
+      display_name: 'Invitado',
+      kids_pin: get().user.kids_pin,
+      streak_days: 0,
+      minutes_watched_today: 0,
+      total_minutes_watched: 0,
+      total_episodes_completed: 0,
+    };
+    storageService.set('profile', guest);
+    set({ user: guest, isAuthenticated: false, remoteUserId: null, role: 'user', authReady: true });
+  },
+
+  markAuthReady: () => set({ authReady: true }),
 
   setLoginModalOpen: (open: boolean) => set({ loginModalOpen: open }),
 
@@ -81,19 +190,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       // Trying to disable kids mode requires PIN
       get().openKidsPinVerification(() => {
         const updated = { ...currentUser, kids_mode_enabled: false };
-        storageService.set('profile', updated);
+        persistProfile(updated, { kids_mode_enabled: false });
         set({ user: updated });
       });
     } else {
       const updated = { ...currentUser, kids_mode_enabled: true };
-      storageService.set('profile', updated);
+      persistProfile(updated, { kids_mode_enabled: true });
       set({ user: updated });
     }
   },
 
   setKidsPin: (pin: string) => {
     const updated = { ...get().user, kids_pin: pin };
-    storageService.set('profile', updated);
+    persistProfile(updated);
     set({ user: updated });
   },
 
@@ -111,7 +220,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   setLanguage: (lang: 'es-ES' | 'es-LA') => {
     const updated = { ...get().user, language: lang };
-    storageService.set('profile', updated);
+    persistProfile(updated, { language: lang });
     set({ user: updated });
   },
 
@@ -122,7 +231,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       minutes_watched_today: u.minutes_watched_today + minutes,
       total_minutes_watched: u.total_minutes_watched + minutes,
     };
-    storageService.set('profile', updated);
+    persistProfile(updated, {
+      minutes_watched_today: updated.minutes_watched_today,
+      total_minutes_watched: updated.total_minutes_watched,
+    });
     set({ user: updated });
   },
 
@@ -132,7 +244,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       ...u,
       total_episodes_completed: u.total_episodes_completed + 1,
     };
-    storageService.set('profile', updated);
+    persistProfile(updated, { total_episodes_completed: updated.total_episodes_completed });
     set({ user: updated });
   },
 
@@ -141,7 +253,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       ...get().user,
       is_vip: isVip,
     };
-    storageService.set('profile', updated);
+    // VIP status is read from `subscriptions` on sign-in; it is not writable from the client.
+    persistProfile(updated);
     set({ user: updated });
   },
 }));

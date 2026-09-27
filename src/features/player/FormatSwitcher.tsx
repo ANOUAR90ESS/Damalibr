@@ -2,13 +2,14 @@ import React from 'react';
 import { BookFormat } from '../../types';
 import { usePlayerStore } from '../../stores/usePlayerStore';
 import { Clapperboard, Film, Sparkles, Check, ArrowRight } from 'lucide-react';
-import { SEED_ADAPTATIONS } from '../../data/seedBooks';
+import { useCatalogStore } from '../../stores/useCatalogStore';
 
 interface FormatSwitcherProps {
   onClose: () => void;
 }
 
 export const FormatSwitcher: React.FC<FormatSwitcherProps> = ({ onClose }) => {
+  const { adaptationsByBook } = useCatalogStore();
   const { currentBook, currentAdaptation, switchFormat, getCurrentStoryPosition } = usePlayerStore();
 
   if (!currentBook || !currentAdaptation) return null;
@@ -16,7 +17,7 @@ export const FormatSwitcher: React.FC<FormatSwitcherProps> = ({ onClose }) => {
   const currentStoryPos = getCurrentStoryPosition();
   const percentage = Math.round(currentStoryPos * 100);
 
-  const availableAdaptations = SEED_ADAPTATIONS[currentBook.id] || [];
+  const availableAdaptations = adaptationsByBook[currentBook.id] || [];
 
   const formats: Array<{
     id: BookFormat;
