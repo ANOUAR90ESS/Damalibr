@@ -12,15 +12,26 @@ Este repositorio usa exclusivamente **Bun 1.2.14** como gestor de paquetes. La v
 # Instalar exactamente las dependencias del lockfile (instalación limpia/CI)
 bun install --frozen-lockfile
 
-# Desarrollo local (http://localhost:3000)
+# Desarrollo local: servidor Express + Vite en middleware (http://localhost:3000)
 bun run dev
+
+# Solo el frontend con Vite, sin la API /api/*
+bun run dev:client
 
 # Validación de tipos/lint
 bun run lint
 
-# Build de producción
+# Tests unitarios (Vitest)
+bun run test
+
+# Build de producción (frontend en dist/ + servidor en server.js)
 bun run build
+
+# Arrancar en producción tras el build
+bun run start
 ```
+
+La API `/api/pipeline/*` valida el cuerpo de la petición y tiene un límite de 10 peticiones por minuto por IP (`server/guards.ts`).
 
 Para actualizar dependencias de forma intencionada, ejecuta `bun install` con Bun 1.2.14 y confirma el cambio resultante en `bun.lock`. No uses `npm install`, `yarn` ni `pnpm`, ya que generarían lockfiles alternativos.
 

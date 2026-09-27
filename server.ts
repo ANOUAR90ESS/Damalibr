@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { GoogleGenAI, Type } from '@google/genai';
+import { createRateLimiter, validateAnalyzeInput } from './server/guards';
 
 dotenv.config();
 
@@ -12,7 +13,10 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
+
+// Protect the Gemini-backed pipeline endpoints from abuse
+app.use('/api/pipeline', createRateLimiter({ windowMs: 60_000, max: 10 }));
 
 // Initialize Google GenAI on server
 const ai = new GoogleGenAI({
@@ -32,7 +36,11 @@ app.get('/api/health', (req, res) => {
 // API: Pipeline Analyze Book using Gemini
 app.post('/api/pipeline/analyze', async (req, res) => {
   try {
-    const { title, author, rawText } = req.body;
+    const validation = validateAnalyzeInput(req.body);
+    if ('error' in validation) {
+      return res.status(400).json({ error: validation.error });
+    }
+    const { title, author, rawText } = validation.value;
 
     if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'MY_GEMINI_API_KEY') {
       // Fallback simulated response if no API key yet
@@ -73,7 +81,7 @@ app.post('/api/pipeline/analyze', async (req, res) => {
       contents: `Analiza la siguiente obra clásica en dominio público y extrae los personajes principales y secundarios con su nombre, rol (protagonista, antagonista, secundario), personalidad, edad aproximada y voz recomendada.
 Obra: "${title}" de ${author}.
 Texto inicial / fragmento:
-${(rawText || '').slice(0, 3000)}`,
+${rawText.slice(0, 3000)}`,
       config: {
         systemInstruction: "Eres un dramaturgista experto en adaptar literatura clásica española a microdramas verticales 9:16.",
         responseMimeType: "application/json",
@@ -109,7 +117,7 @@ ${(rawText || '').slice(0, 3000)}`,
       book_id: 'book-pipeline',
       voice_id: `voice-${c.name.toLowerCase().replace(/\s+/g, '-')}`,
       voice_name: c.voice_name || 'Fenrir (Voz clásica)',
-      avatar_url: `https://images.unsplash.com/photo-15${34500000000 + i * 1000000}?auto=format&fit=crop&w=200&q=80`
+      avatar_url: `https://api.dicebear.com/9.x/initials/svg?seed=${encodeURIComponent(c.name)}`
     }));
 
     return res.json({ characters: enriched });

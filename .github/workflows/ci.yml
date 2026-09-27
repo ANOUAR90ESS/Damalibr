@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   validate:
-    name: Lint and build
+    name: Lint, test and build
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -24,6 +24,9 @@ jobs:
 
       - name: Lint
         run: bun run lint
+
+      - name: Test
+        run: bun run test
 
       - name: Build
         run: bun run build
