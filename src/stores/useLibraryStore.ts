@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { storageService } from '../lib/supabase';
 import { fetchLibrary, setLike, upsertLibraryItem, upsertProgress } from '../lib/api/userData';
-import { LibraryItem, UserProgress } from '../types';
+import { Episode, LibraryItem, UserProgress } from '../types';
+import { downloadEpisodes, removeBookDownloads } from '../lib/offline';
 
 const LOCAL_USER_ID = 'usr-lamina-demo';
 // Playback progress is saved on every tick; only push it to the server this often.
@@ -23,8 +24,11 @@ interface LibraryState {
   saveProgress: (bookId: string, adaptationId: string, episodeId: string, seconds: number, completed?: boolean) => void;
   getProgress: (bookId: string, adaptationId: string, episodeId: string) => UserProgress | undefined;
   getBookLatestProgress: (bookId: string) => UserProgress | undefined;
-  downloadEpisodeOffline: (bookId: string, episodeId: string, sizeMb?: number) => void;
-  removeOfflineDownload: (bookId: string) => void;
+  /** Offline downloads in progress, by book id */
+  downloads: Record<string, { done: number; total: number }>;
+  /** Downloads the given (already accessible) episodes for offline viewing. Native app only. */
+  downloadBook: (bookId: string, episodes: Episode[]) => Promise<void>;
+  removeOfflineDownload: (bookId: string) => Promise<void>;
   isBookDownloaded: (bookId: string) => boolean;
 }
 
@@ -34,8 +38,7 @@ const DEFAULT_LIBRARY_ITEMS: Record<string, LibraryItem> = {
     book_id: 'book-quijote',
     state: 'started',
     is_bookmarked: true,
-    is_downloaded: true,
-    download_size_mb: 48.5,
+    is_downloaded: false,
     updated_at: new Date().toISOString(),
   },
   'book-celestina': {
@@ -113,6 +116,7 @@ function persistProgress(progress: Record<string, UserProgress>, key: string) {
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   ...loadLocalState(),
   remoteUserId: null,
+  downloads: {},
 
   loadRemote: async (userId: string) => {
     lastProgressSync.clear();
@@ -231,29 +235,34 @@ export const useLibraryStore = create<LibraryState>((set, get) => ({
     return all.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())[0];
   },
 
-  downloadEpisodeOffline: (bookId: string, _episodeId: string, sizeMb = 35.4) => {
-    const items = { ...get().items };
-    const current = items[bookId] || {
-      user_id: get().remoteUserId ?? LOCAL_USER_ID,
-      book_id: bookId,
-      state: 'started',
-      is_bookmarked: false,
-      is_downloaded: false,
-      updated_at: new Date().toISOString(),
-    };
-
-    items[bookId] = {
-      ...current,
-      is_downloaded: true,
-      download_size_mb: (current.download_size_mb || 0) + sizeMb,
-      updated_at: new Date().toISOString(),
-    };
-
-    persistItem(items, bookId);
-    set({ items });
+  downloadBook: async (bookId: string, episodes: Episode[]) => {
+    if (get().downloads[bookId]) return;
+    set(s => ({ downloads: { ...s.downloads, [bookId]: { done: 0, total: episodes.length } } }));
+    try {
+      const sizeMb = await downloadEpisodes(bookId, episodes, (done, total) =>
+        set(s => ({ downloads: { ...s.downloads, [bookId]: { done, total } } })));
+      const items = { ...get().items };
+      const current = items[bookId] || {
+        user_id: get().remoteUserId ?? LOCAL_USER_ID,
+        book_id: bookId,
+        state: 'to_watch',
+        is_bookmarked: false,
+        is_downloaded: false,
+        updated_at: new Date().toISOString(),
+      };
+      items[bookId] = { ...current, is_downloaded: true, download_size_mb: Math.round(sizeMb * 10) / 10, updated_at: new Date().toISOString() };
+      persistItem(items, bookId);
+      set({ items });
+    } finally {
+      set(s => {
+        const { [bookId]: _done, ...rest } = s.downloads;
+        return { downloads: rest };
+      });
+    }
   },
 
-  removeOfflineDownload: (bookId: string) => {
+  removeOfflineDownload: async (bookId: string) => {
+    await removeBookDownloads(bookId);
     const items = { ...get().items };
     if (items[bookId]) {
       items[bookId] = {

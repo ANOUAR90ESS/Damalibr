@@ -1,11 +1,15 @@
 import React, { useState } from 'react';
-import { useWalletStore } from '../../stores/useWalletStore';
+import { NATIVE_PURCHASES_MESSAGE, useWalletStore } from '../../stores/useWalletStore';
+import { useAuthStore } from '../../stores/useAuthStore';
+import { purchasesAvailable } from '../../lib/platform';
 import { Coins, Check, Sparkles, X } from 'lucide-react';
 import { COIN_PACKS, formatEur } from '../../lib/products';
 
 export const CoinShopModal: React.FC = () => {
   const { coinShopModalOpen, closeCoinShopModal, purchaseCoins, coins, paymentPending, paymentError } = useWalletStore();
   const [selectedPackIndex, setSelectedPackIndex] = useState(1);
+  // Real accounts inside the native app cannot buy through Stripe (store billing rules).
+  const storeBlocked = useAuthStore(s => !purchasesAvailable && s.authMode === 'supabase');
 
   if (!coinShopModalOpen) return null;
 
@@ -83,10 +87,16 @@ export const CoinShopModal: React.FC = () => {
           ))}
         </div>
 
+        {storeBlocked && (
+          <p className="text-[11px] text-center font-semibold text-slate-300 bg-slate-800/80 rounded-xl p-2.5">
+            {NATIVE_PURCHASES_MESSAGE}
+          </p>
+        )}
+
         {/* Checkout Button */}
         <button
           onClick={handleBuy}
-          disabled={paymentPending}
+          disabled={paymentPending || storeBlocked}
           className="w-full disabled:opacity-60 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 active:scale-98 transition-all"
         >
           <Sparkles className="w-4 h-4" />

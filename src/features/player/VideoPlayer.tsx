@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Hls from 'hls.js';
+import { offlineSrc } from '../../lib/offline';
+import { mediaUrl } from '../../lib/platform';
 import { usePlayerStore } from '../../stores/usePlayerStore';
 import { PlayerControls } from './PlayerControls';
 import { FormatSwitcher } from './FormatSwitcher';
@@ -67,9 +69,11 @@ export const VideoPlayer: React.FC = () => {
     if (!isOpen || isMiniPlayer || !currentEpisode || !videoRef.current) return;
 
     const video = videoRef.current;
-    const streamSource = currentEpisode.hls_url || currentEpisode.video_url;
+    // Downloaded episodes play from the device; otherwise stream (HLS when available).
+    const localSource = offlineSrc(currentEpisode.id);
+    const streamSource = localSource || mediaUrl(currentEpisode.hls_url || currentEpisode.video_url) || '';
 
-    if (currentEpisode.hls_url && Hls.isSupported()) {
+    if (!localSource && currentEpisode.hls_url && Hls.isSupported()) {
       if (hlsRef.current) {
         hlsRef.current.destroy();
       }

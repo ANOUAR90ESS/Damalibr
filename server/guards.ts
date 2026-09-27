@@ -26,3 +26,23 @@ export function createRateLimiter({ windowMs, max, now = Date.now }: { windowMs:
     next();
   };
 }
+
+// The native app (Capacitor) calls the API from capacitor://localhost (iOS) and
+// https://localhost (Android). Only these origins, plus CORS_ORIGINS, get CORS headers.
+export const DEFAULT_APP_ORIGINS = ['capacitor://localhost', 'https://localhost'];
+
+export function createCors(allowed: string[]) {
+  const origins = new Set(allowed);
+  return function cors(req: Request, res: Response, next: NextFunction) {
+    const origin = req.get('origin');
+    if (origin && origins.has(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Headers', 'authorization, content-type');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, OPTIONS');
+      res.setHeader('Access-Control-Max-Age', '600');
+      if (req.method === 'OPTIONS') return res.status(204).end();
+    }
+    next();
+  };
+}

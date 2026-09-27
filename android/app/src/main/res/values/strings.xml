@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Lámina</string>
+    <string name="title_activity_main">Lámina</string>
+    <string name="package_name">com.lamina.app</string>
+    <string name="custom_url_scheme">com.lamina.app</string>
+</resources>

@@ -5,6 +5,9 @@ import confetti from 'canvas-confetti';
 import { useAuthStore } from './useAuthStore';
 import { COIN_PACKS, CoinPack, formatEur, VIP_PLAN } from '../lib/products';
 import { createBillingPortal, createCheckout, fetchWallet, unlockEpisodeRemote } from '../lib/api/wallet';
+import { purchasesAvailable } from '../lib/platform';
+
+export const NATIVE_PURCHASES_MESSAGE = 'Las compras todavía no están disponibles en la app. Tus monedas y tu VIP se sincronizan con tu cuenta.';
 
 interface WalletState {
   coins: number;
@@ -69,6 +72,11 @@ const errorMessage = (e: unknown) => (e instanceof Error ? e.message : 'Algo sal
 export const useWalletStore = create<WalletState>((set, get) => {
   // Signed-in users pay through Stripe Checkout; the webhook credits the purchase.
   async function redirectToCheckout(productId: CoinPack['id'] | typeof VIP_PLAN.id) {
+    // App stores require their own billing for digital goods: no Stripe inside the native app.
+    if (!purchasesAvailable) {
+      set({ paymentError: NATIVE_PURCHASES_MESSAGE });
+      return;
+    }
     set({ paymentPending: true, paymentError: null });
     try {
       window.location.assign(await createCheckout(productId));
@@ -231,6 +239,10 @@ export const useWalletStore = create<WalletState>((set, get) => {
         // Local demo mode: cancel immediately
         useAuthStore.getState().setVipStatus(false);
         set({ vipModalOpen: false });
+        return;
+      }
+      if (!purchasesAvailable) {
+        set({ paymentError: NATIVE_PURCHASES_MESSAGE });
         return;
       }
       set({ paymentPending: true, paymentError: null });

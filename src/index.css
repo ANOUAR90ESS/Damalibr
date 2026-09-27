@@ -55,3 +55,7 @@
 .animate-kenburns-2 {
   animation: kenburns-2 16s ease-in-out infinite alternate;
 }
+/* Top bars: keep clear of the status bar / notch in the native app (0 on the web). */
+.pt-safe-bar {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+}

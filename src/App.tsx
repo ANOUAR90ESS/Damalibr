@@ -14,6 +14,7 @@ import { MiniPlayer } from './features/player/MiniPlayer';
 import { UnlockModal } from './features/player/UnlockModal';
 import { CoinShopModal } from './features/player/CoinShopModal';
 import { VipModal } from './features/player/VipModal';
+import { NativeBridge } from './features/native/NativeBridge';
 
 function AppLayout() {
   const location = useLocation();
@@ -22,6 +23,8 @@ function AppLayout() {
 
   return (
     <div className="relative min-h-screen bg-[#090a0f] text-slate-100 selection:bg-amber-500/30 selection:text-amber-200">
+      <NativeBridge />
+
       {/* Route Views */}
       <main className="w-full">
         <Routes>

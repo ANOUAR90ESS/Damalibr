@@ -34,7 +34,7 @@ export const LibraryScreen: React.FC = () => {
     .filter(i => i.is_downloaded)
     .map(i => ({
       book: books.find(b => b.id === i.book_id),
-      size: i.download_size_mb || 35.4
+      size: i.download_size_mb || 0
     }))
     .filter((e): e is { book: typeof books[0]; size: number } => Boolean(e.book));
 

@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { UserProfile } from '../types';
 import { isSupabaseConfigured, storageService, supabase } from '../lib/supabase';
+import { authRedirectUrl, isNative } from '../lib/platform';
+import { Browser } from '@capacitor/browser';
 import { KidsModeError, ProfileUpdate, setKidsModeRemote, updateProfile } from '../lib/api/userData';
 
 export interface AuthResult {
@@ -80,8 +82,6 @@ function persistProfile(updated: UserProfile, remotePatch?: ProfileUpdate) {
   }
 }
 
-const authRedirectUrl = () => `${window.location.origin}/profile`;
-
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: storageService.get<UserProfile>('profile', DEFAULT_USER),
   // In local demo mode the user is always "signed in"; with Supabase we wait for a real session.
@@ -117,12 +117,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   loginWithGoogle: async () => {
     if (supabase) {
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: authRedirectUrl() },
+        // In the app, open Google in the system browser; it returns through the deep link.
+        options: { redirectTo: authRedirectUrl(), skipBrowserRedirect: isNative },
       });
       if (error) return { ok: false, message: error.message };
-      return { ok: true, message: 'Redirigiendo a Google…' };
+      if (isNative && data.url) await Browser.open({ url: data.url, presentationStyle: 'popover' });
+      return { ok: true, message: 'Continúa en la ventana de Google…' };
     }
 
     const updatedUser: UserProfile = {

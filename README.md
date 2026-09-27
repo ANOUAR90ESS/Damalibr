@@ -99,28 +99,29 @@ Modelos configurables: `GEMINI_TEXT_MODEL` (por defecto `gemini-3.8-flash`), `GE
 
 ---
 
-## 📱 Empaquetado Móvil con Capacitor
+## 📱 App nativa (Capacitor 8)
 
-Para generar la app nativa en iOS o Android:
+Los proyectos nativos están en `android/` e `ios/` (iOS usa Swift Package Manager, sin CocoaPods). La app empaqueta la web de `dist/` y habla con el servidor de Lámina por `VITE_API_URL`.
 
 ```bash
-# 1. Instalar Capacitor
-npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/ios
+# 1. Compila la web apuntando al servidor público y copia los assets a los proyectos nativos
+VITE_API_URL="https://api.tu-dominio.com" VITE_SUPABASE_URL="..." VITE_SUPABASE_ANON_KEY="..." bun run cap:sync
 
-# 2. Inicializar el proyecto Capacitor
-npx cap init "Lámina" "com.lamina.app" --web-dir dist
-
-# 3. Compilar la aplicación web
-npm run build
-
-# 4. Añadir plataformas nativas
-npx cap add android
-npx cap add ios
-
-# 5. Sincronizar y abrir en Android Studio / Xcode
-npx cap sync
-npx cap open android
+# 2. Abre el proyecto en Android Studio o Xcode (macOS) para ejecutar o firmar
+bun run cap:android
+bun run cap:ios
 ```
+
+Qué cambia dentro de la app (`src/lib/platform.ts`, `src/features/native/NativeBridge.tsx`):
+
+- **Login**: Google se abre en el navegador del sistema y vuelve por el enlace profundo `com.lamina.app://auth-callback`; el enlace mágico por email también vuelve a la app. Supabase usa el flujo PKCE en nativo. Añade `com.lamina.app://auth-callback` a las *Redirect URLs* de Supabase.
+- **Enlaces profundos**: `com.lamina.app://book/<id>` abre la ficha de un libro. Registrado en `AndroidManifest.xml` e `Info.plist`.
+- **Descargas sin conexión**: se guardan los MP4 de los episodios a los que el usuario ya tiene acceso (gratis, desbloqueados o VIP) en la carpeta privada de la app, y el reproductor los usa sin conexión. En la web el botón explica que es una función de la app.
+- **Compras**: Apple y Google exigen sus sistemas de compra integrada para contenido digital, así que en la app nativa la compra de monedas y VIP con Stripe está desactivada (se muestra un aviso). Lo ya comprado en la web se sincroniza con la cuenta. Siguiente paso: compras integradas (p. ej. RevenueCat) con validación en el servidor.
+- **Barra de estado, notch y botón atrás de Android** gestionados por la app.
+- **CORS**: el servidor acepta peticiones de `capacitor://localhost` (iOS) y `https://localhost` (Android); añade otros orígenes con `CORS_ORIGINS`.
+
+Pendiente antes de publicar en las tiendas: iconos y pantalla de inicio (`@capacitor/assets`), firma y fichas de App Store / Google Play.
 
 ---
 

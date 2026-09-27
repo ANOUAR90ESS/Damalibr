@@ -5,7 +5,7 @@ import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
-import { createRateLimiter } from './server/guards';
+import { createCors, createRateLimiter, DEFAULT_APP_ORIGINS } from './server/guards';
 import { createPaymentsRouter } from './server/paymentsRouter';
 import { hasGeminiKey } from './server/pipeline/common';
 import { LocalMediaStore, SupabaseMediaStore } from './server/pipeline/media';
@@ -21,6 +21,9 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
+
+// CORS for the native app (and any extra origins in CORS_ORIGINS, comma-separated).
+app.use('/api', createCors([...DEFAULT_APP_ORIGINS, ...(process.env.CORS_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean)]));
 
 // Server-side Supabase client with the service role (payments, pipeline, publishing).
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;

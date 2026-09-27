@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Request, Response } from 'express';
-import { createRateLimiter } from './guards';
+import { createCors, createRateLimiter } from './guards';
 
 describe('createRateLimiter', () => {
   function mockRes() {
@@ -33,5 +33,28 @@ describe('createRateLimiter', () => {
     t = 1000;
     limiter(req('1.1.1.1'), mockRes(), next);
     expect(next).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe('createCors', () => {
+  const run = (origin: string | undefined, method = 'GET') => {
+    const headers: Record<string, string> = {};
+    const res = { statusCode: 200, setHeader: (k: string, v: string) => { headers[k] = v; }, status(c: number) { this.statusCode = c; return this; }, end: vi.fn() } as any;
+    const next = vi.fn();
+    createCors(['capacitor://localhost'])({ get: () => origin, method } as unknown as Request, res, next);
+    return { headers, res, next };
+  };
+
+  it('allows the native app origin and answers preflight requests', () => {
+    expect(run('capacitor://localhost').headers['Access-Control-Allow-Origin']).toBe('capacitor://localhost');
+    const pre = run('capacitor://localhost', 'OPTIONS');
+    expect(pre.res.statusCode).toBe(204);
+    expect(pre.next).not.toHaveBeenCalled();
+  });
+
+  it('adds no CORS headers for other origins', () => {
+    const other = run('https://evil.example');
+    expect(other.headers).toEqual({});
+    expect(other.next).toHaveBeenCalled();
   });
 });
