@@ -4,6 +4,28 @@
 
 ---
 
+## Requisitos y comandos
+
+Este repositorio usa exclusivamente **Bun 1.2.14** como gestor de paquetes. La versión está fijada en `package.json` y el lockfile `bun.lock` utiliza el formato compatible con esa versión. Usa Node.js **22.12.0 o posterior** para ejecutar las herramientas del proyecto.
+
+```bash
+# Instalar exactamente las dependencias del lockfile (instalación limpia/CI)
+bun install --frozen-lockfile
+
+# Desarrollo local (http://localhost:3000)
+bun run dev
+
+# Validación de tipos/lint
+bun run lint
+
+# Build de producción
+bun run build
+```
+
+Para actualizar dependencias de forma intencionada, ejecuta `bun install` con Bun 1.2.14 y confirma el cambio resultante en `bun.lock`. No uses `npm install`, `yarn` ni `pnpm`, ya que generarían lockfiles alternativos.
+
+---
+
 ## 🚀 Arquitectura y Stack Tecnológico
 
 - **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS v4.
