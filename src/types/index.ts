@@ -53,6 +53,8 @@ export interface ScriptLine {
   emotion: string; // 'tenso' | 'apasionado' | 'furioso' | 'melancólico' | 'sarcástico' | 'misterioso' | 'neutro'
   duration_seconds: number;
   audio_url?: string;
+  /** Storage path of the generated audio (pipeline only) */
+  audio_path?: string;
 }
 
 export interface ScriptScene {
@@ -61,6 +63,8 @@ export interface ScriptScene {
   visual_prompt: string;
   visual_mode: 'economic' | 'premium';
   image_url: string;
+  /** Storage path of the generated image (pipeline only) */
+  image_path?: string;
   video_url?: string;
   lines: ScriptLine[];
   duration: number;
@@ -140,7 +144,8 @@ export interface UserProfile {
   avatar_url: string;
   is_vip: boolean;
   kids_mode_enabled: boolean;
-  kids_pin?: string;
+  /** true once a parental PIN has been created */
+  kids_pin_set?: boolean;
   language: 'es-ES' | 'es-LA';
   daily_goal_minutes: number;
   streak_days: number;
@@ -149,25 +154,42 @@ export interface UserProfile {
   total_episodes_completed: number;
 }
 
+export type PipelineStep = 'ingest' | 'analyze' | 'adapt' | 'voices' | 'visuals' | 'render' | 'review' | 'published';
+
+export interface PipelineChapterInfo {
+  title: string;
+  length: number;
+}
+
 export interface PipelineJob {
   id: string;
   book_title: string;
   author: string;
   source_type: 'gutenberg' | 'wikisource' | 'custom_text';
+  source_url?: string;
   raw_text?: string;
-  current_step: 'ingest' | 'analyze' | 'adapt' | 'voices' | 'visuals' | 'render' | 'review' | 'published';
+  /** Book id the job will publish to (derived from the title) */
+  book_id?: string;
+  /** Catalog entry being built (after the analysis step) */
+  book?: Book;
+  /** Number of microdrama episodes to write */
+  drama_episodes?: number;
+  /** Chapter titles/lengths after ingest (the full text stays on the server) */
+  chapters?: PipelineChapterInfo[];
+  current_step: PipelineStep;
   status: 'idle' | 'running' | 'completed' | 'failed' | 'waiting_review';
   progress: number; // 0 to 100
   logs: Array<{ timestamp: string; message: string; type: 'info' | 'success' | 'warn' | 'error' }>;
   characters?: Character[];
-  drama_episodes?: Partial<Episode>[];
-  film_script?: Partial<Episode>;
-  summary_script?: Partial<Episode>;
-  voice_assignments?: Record<string, string>;
+  adaptations?: Adaptation[];
+  /** Episodes for every adaptation, keyed by adaptation id */
+  episodes?: Record<string, Episode[]>;
   visual_mode?: 'economic' | 'premium';
   render_options?: {
     quality: string[];
     subtitles_burned: boolean;
   };
   review_notes?: string;
+  created_at?: string;
+  updated_at?: string;
 }

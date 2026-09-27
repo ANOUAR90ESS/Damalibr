@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { isNative } from './platform';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -15,6 +16,10 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
       auth: {
         persistSession: true,
         autoRefreshToken: true,
+        // The native app receives the sign-in result through a deep link and exchanges
+        // the one-time code itself (PKCE); the web keeps reading the session from the URL.
+        flowType: isNative ? 'pkce' : 'implicit',
+        detectSessionInUrl: !isNative,
       },
     })
   : null;

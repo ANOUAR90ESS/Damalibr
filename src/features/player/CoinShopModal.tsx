@@ -1,22 +1,22 @@
 import React, { useState } from 'react';
-import { useWalletStore } from '../../stores/useWalletStore';
+import { NATIVE_PURCHASES_MESSAGE, useWalletStore } from '../../stores/useWalletStore';
+import { useAuthStore } from '../../stores/useAuthStore';
+import { purchasesAvailable } from '../../lib/platform';
 import { Coins, Check, Sparkles, X } from 'lucide-react';
+import { COIN_PACKS, formatEur } from '../../lib/products';
 
 export const CoinShopModal: React.FC = () => {
-  const { coinShopModalOpen, closeCoinShopModal, purchaseCoins, coins } = useWalletStore();
+  const { coinShopModalOpen, closeCoinShopModal, purchaseCoins, coins, paymentPending, paymentError } = useWalletStore();
   const [selectedPackIndex, setSelectedPackIndex] = useState(1);
+  // Real accounts inside the native app cannot buy through Stripe (store billing rules).
+  const storeBlocked = useAuthStore(s => !purchasesAvailable && s.authMode === 'supabase');
 
   if (!coinShopModalOpen) return null;
 
-  const packs = [
-    { coins: 50, priceEur: 1.99, tag: 'Básico', popular: false },
-    { coins: 150, priceEur: 4.99, tag: 'Más Popular (+25% gratis)', popular: true },
-    { coins: 400, priceEur: 9.99, tag: 'Mejor Valor (+60% gratis)', popular: false },
-  ];
+  const packs = COIN_PACKS;
 
   const handleBuy = () => {
-    const pack = packs[selectedPackIndex];
-    purchaseCoins(pack.coins, pack.priceEur);
+    purchaseCoins(packs[selectedPackIndex].id);
   };
 
   return (
@@ -48,7 +48,7 @@ export const CoinShopModal: React.FC = () => {
         <div className="space-y-2.5">
           {packs.map((pack, idx) => (
             <button
-              key={pack.coins}
+              key={pack.id}
               onClick={() => setSelectedPackIndex(idx)}
               className={`w-full p-3.5 rounded-2xl border text-left flex items-center justify-between transition-all ${
                 selectedPackIndex === idx
@@ -76,7 +76,7 @@ export const CoinShopModal: React.FC = () => {
               </div>
 
               <div className="text-right">
-                <span className="font-bold text-sm text-amber-400 font-mono">{pack.priceEur.toFixed(2)} €</span>
+                <span className="font-bold text-sm text-amber-400 font-mono">{formatEur(pack.priceCents)}</span>
                 {selectedPackIndex === idx && (
                   <div className="w-4 h-4 rounded-full bg-amber-400 text-slate-950 flex items-center justify-center ml-auto mt-1">
                     <Check className="w-3 h-3" />
@@ -87,17 +87,34 @@ export const CoinShopModal: React.FC = () => {
           ))}
         </div>
 
+        {storeBlocked && (
+          <p className="text-[11px] text-center font-semibold text-slate-300 bg-slate-800/80 rounded-xl p-2.5">
+            {NATIVE_PURCHASES_MESSAGE}
+          </p>
+        )}
+
         {/* Checkout Button */}
         <button
           onClick={handleBuy}
-          className="w-full py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 active:scale-98 transition-all"
+          disabled={paymentPending || storeBlocked}
+          className="w-full disabled:opacity-60 py-3.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 active:scale-98 transition-all"
         >
           <Sparkles className="w-4 h-4" />
-          <span>Comprar {packs[selectedPackIndex].coins} monedas ({packs[selectedPackIndex].priceEur.toFixed(2)} €)</span>
+          <span>
+            {paymentPending
+              ? 'Redirigiendo al pago seguro…'
+              : `Comprar ${packs[selectedPackIndex].coins} monedas (${formatEur(packs[selectedPackIndex].priceCents)})`}
+          </span>
         </button>
 
+        {paymentError && (
+          <p role="alert" className="text-[11px] text-center font-semibold text-rose-400">
+            {paymentError}
+          </p>
+        )}
+
         <p className="text-[10px] text-center text-slate-500">
-          Pagos seguros procesados en la web y sincronizados con tu cuenta.
+          Pago seguro con Stripe. Las monedas se añaden a tu cuenta al confirmarse el pago.
         </p>
       </div>
     </div>

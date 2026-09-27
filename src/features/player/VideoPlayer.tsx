@@ -1,16 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Hls from 'hls.js';
+import { offlineSrc } from '../../lib/offline';
+import { mediaUrl } from '../../lib/platform';
 import { usePlayerStore } from '../../stores/usePlayerStore';
 import { PlayerControls } from './PlayerControls';
 import { FormatSwitcher } from './FormatSwitcher';
-import { UnlockModal } from './UnlockModal';
-import { CoinShopModal } from './CoinShopModal';
-import { VipModal } from './VipModal';
-import { SEED_EPISODES } from '../../data/seedBooks';
+import { useCatalogStore } from '../../stores/useCatalogStore';
 import { useWalletStore } from '../../stores/useWalletStore';
 import { Lock, Play, X, Sparkles, Volume2, VolumeX } from 'lucide-react';
 
 export const VideoPlayer: React.FC = () => {
+  const { episodesByAdaptation } = useCatalogStore();
   const {
     currentBook,
     currentAdaptation,
@@ -69,9 +69,11 @@ export const VideoPlayer: React.FC = () => {
     if (!isOpen || isMiniPlayer || !currentEpisode || !videoRef.current) return;
 
     const video = videoRef.current;
-    const streamSource = currentEpisode.hls_url || currentEpisode.video_url;
+    // Downloaded episodes play from the device; otherwise stream (HLS when available).
+    const localSource = offlineSrc(currentEpisode.id);
+    const streamSource = localSource || mediaUrl(currentEpisode.hls_url || currentEpisode.video_url) || '';
 
-    if (currentEpisode.hls_url && Hls.isSupported()) {
+    if (!localSource && currentEpisode.hls_url && Hls.isSupported()) {
       if (hlsRef.current) {
         hlsRef.current.destroy();
       }
@@ -164,7 +166,7 @@ export const VideoPlayer: React.FC = () => {
   };
 
   const isVertical = currentAdaptation.format === 'drama' || currentAdaptation.format === 'summary';
-  const episodes = SEED_EPISODES[currentAdaptation.id] || [];
+  const episodes = episodesByAdaptation[currentAdaptation.id] || [];
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex items-center justify-center overflow-hidden select-none">
@@ -324,13 +326,6 @@ export const VideoPlayer: React.FC = () => {
       {formatSwitcherOpen && (
         <FormatSwitcher onClose={() => setFormatSwitcherOpen(false)} />
       )}
-
-      {/* Unlock Episode Modal */}
-      <UnlockModal />
-
-      {/* Coin Shop & VIP Modals */}
-      <CoinShopModal />
-      <VipModal />
     </div>
   );
 };

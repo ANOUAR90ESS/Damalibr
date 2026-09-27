@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useLibraryStore } from '../../stores/useLibraryStore';
 import { usePlayerStore } from '../../stores/usePlayerStore';
-import { SEED_BOOKS, SEED_ADAPTATIONS, SEED_EPISODES } from '../../data/seedBooks';
+import { useCatalogStore } from '../../stores/useCatalogStore';
 import { TopNavBar } from '../navigation/TopNavBar';
 import { Bookmark, Play, CheckCircle2, Download, Trash2, BookOpen } from 'lucide-react';
 
 export const LibraryScreen: React.FC = () => {
+  const { books, adaptationsByBook, episodesByAdaptation } = useCatalogStore();
   const navigate = useNavigate();
   const { items, progress, setBookState, removeOfflineDownload } = useLibraryStore();
   const { playEpisode } = usePlayerStore();
@@ -16,36 +17,36 @@ export const LibraryScreen: React.FC = () => {
   // Map library items to books
   const startedBooks = Object.values(items)
     .filter(i => i.state === 'started')
-    .map(i => SEED_BOOKS.find(b => b.id === i.book_id))
-    .filter((b): b is typeof SEED_BOOKS[0] => Boolean(b));
+    .map(i => books.find(b => b.id === i.book_id))
+    .filter((b): b is typeof books[0] => Boolean(b));
 
   const toWatchBooks = Object.values(items)
     .filter(i => i.state === 'to_watch' || i.is_bookmarked)
-    .map(i => SEED_BOOKS.find(b => b.id === i.book_id))
-    .filter((b): b is typeof SEED_BOOKS[0] => Boolean(b));
+    .map(i => books.find(b => b.id === i.book_id))
+    .filter((b): b is typeof books[0] => Boolean(b));
 
   const finishedBooks = Object.values(items)
     .filter(i => i.state === 'finished')
-    .map(i => SEED_BOOKS.find(b => b.id === i.book_id))
-    .filter((b): b is typeof SEED_BOOKS[0] => Boolean(b));
+    .map(i => books.find(b => b.id === i.book_id))
+    .filter((b): b is typeof books[0] => Boolean(b));
 
   const downloadedBooks = Object.values(items)
     .filter(i => i.is_downloaded)
     .map(i => ({
-      book: SEED_BOOKS.find(b => b.id === i.book_id),
-      size: i.download_size_mb || 35.4
+      book: books.find(b => b.id === i.book_id),
+      size: i.download_size_mb || 0
     }))
-    .filter((e): e is { book: typeof SEED_BOOKS[0]; size: number } => Boolean(e.book));
+    .filter((e): e is { book: typeof books[0]; size: number } => Boolean(e.book));
 
   const handleResume = (bookId: string) => {
-    const book = SEED_BOOKS.find(b => b.id === bookId);
+    const book = books.find(b => b.id === bookId);
     if (!book) return;
 
-    const bookAdaptations = SEED_ADAPTATIONS[book.id] || [];
+    const bookAdaptations = adaptationsByBook[book.id] || [];
     const dramaAdapt = bookAdaptations.find(a => a.format === 'drama') || bookAdaptations[0];
     if (!dramaAdapt) return;
 
-    const episodes = SEED_EPISODES[dramaAdapt.id] || [];
+    const episodes = episodesByAdaptation[dramaAdapt.id] || [];
     const userProg = Object.values(progress).find(p => p.book_id === book.id && !p.completed);
     const targetEp = episodes.find(e => e.id === userProg?.episode_id) || episodes[0];
 

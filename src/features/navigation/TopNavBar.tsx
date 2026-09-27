@@ -14,7 +14,7 @@ export const TopNavBar: React.FC<TopNavBarProps> = ({ onSearchClick }) => {
   const { user } = useAuthStore();
 
   return (
-    <header className="sticky top-0 z-30 w-full bg-[#090a0f]/90 backdrop-blur-md border-b border-slate-800/80 px-4 py-3 flex items-center justify-between">
+    <header className="sticky top-0 z-30 w-full bg-[#090a0f]/90 backdrop-blur-md border-b border-slate-800/80 px-4 pt-safe-bar pb-3 flex items-center justify-between">
       {/* Brand Zone */}
       <button 
         onClick={() => navigate('/')} 

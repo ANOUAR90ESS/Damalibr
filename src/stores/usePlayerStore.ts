@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { Book, Adaptation, Episode, BookFormat, ScriptLine } from '../types';
-import { SEED_BOOKS, SEED_ADAPTATIONS, SEED_EPISODES } from '../data/seedBooks';
+import { useCatalogStore } from './useCatalogStore';
 import { useLibraryStore } from './useLibraryStore';
 import { useWalletStore } from './useWalletStore';
 
@@ -244,12 +244,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const currentStoryPos = get().getCurrentStoryPosition();
 
     // 2. Find target adaptation
-    const bookAdaptations = SEED_ADAPTATIONS[currentBook.id] || [];
+    const bookAdaptations = useCatalogStore.getState().adaptationsByBook[currentBook.id] || [];
     const targetAdaptation = bookAdaptations.find(a => a.format === targetFormat);
     if (!targetAdaptation) return;
 
     // 3. Find episode in target adaptation matching the story position
-    const targetEpisodes = SEED_EPISODES[targetAdaptation.id] || [];
+    const targetEpisodes = useCatalogStore.getState().episodesByAdaptation[targetAdaptation.id] || [];
     if (!targetEpisodes.length) return;
 
     // Find episode where story_position_start <= currentStoryPos <= story_position_end
@@ -279,7 +279,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const { currentAdaptation, currentEpisode, currentBook } = get();
     if (!currentAdaptation || !currentEpisode || !currentBook) return;
 
-    const episodes = SEED_EPISODES[currentAdaptation.id] || [];
+    const episodes = useCatalogStore.getState().episodesByAdaptation[currentAdaptation.id] || [];
     const currentIndex = episodes.findIndex(e => e.id === currentEpisode.id);
     if (currentIndex >= 0 && currentIndex < episodes.length - 1) {
       const nextEp = episodes[currentIndex + 1];
@@ -291,7 +291,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     const { currentAdaptation, currentEpisode, currentBook } = get();
     if (!currentAdaptation || !currentEpisode || !currentBook) return;
 
-    const episodes = SEED_EPISODES[currentAdaptation.id] || [];
+    const episodes = useCatalogStore.getState().episodesByAdaptation[currentAdaptation.id] || [];
     const currentIndex = episodes.findIndex(e => e.id === currentEpisode.id);
     if (currentIndex > 0) {
       const prevEp = episodes[currentIndex - 1];

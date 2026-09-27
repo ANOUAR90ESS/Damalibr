@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useWalletStore } from '../../stores/useWalletStore';
 import { TopNavBar } from '../navigation/TopNavBar';
@@ -11,42 +12,112 @@ export const ProfileScreen: React.FC = () => {
   const { 
     user, 
     isAuthenticated, 
+    authMode,
     loginWithEmail, 
     loginWithGoogle, 
     logout,
-    toggleKidsMode,
+    setKidsMode,
     setLanguage,
-    kidsPinModalOpen,
-    closeKidsPinVerification,
-    verifyKidsPin,
-    pendingKidsPinAction,
   } = useAuthStore();
 
   const { coins, openCoinShopModal, openVipModal, transactions } = useWalletStore();
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const checkoutResult = searchParams.get('checkout');
+  const dismissCheckoutResult = () => {
+    searchParams.delete('checkout');
+    setSearchParams(searchParams, { replace: true });
+  };
+
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authEmail, setAuthEmail] = useState('');
   const [authName, setAuthName] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authStatus, setAuthStatus] = useState<{ ok: boolean; message: string } | null>(null);
+  // 'create' when enabling kids mode for the first time, 'verify' when disabling it
+  const [pinModal, setPinModal] = useState<'create' | 'verify' | null>(null);
   const [pinInput, setPinInput] = useState('');
-  const [pinError, setPinError] = useState(false);
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [pinLoading, setPinLoading] = useState(false);
 
-  const handlePinSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (verifyKidsPin(pinInput)) {
-      setPinError(false);
-      setPinInput('');
-      closeKidsPinVerification();
-      if (pendingKidsPinAction) pendingKidsPinAction();
-    } else {
-      setPinError(true);
+  const closePinModal = () => {
+    setPinModal(null);
+    setPinInput('');
+    setPinError(null);
+  };
+
+  const pinErrorMessage = (error?: string) => {
+    if (error === 'wrong_pin') return 'PIN incorrecto. Vuelve a intentarlo.';
+    if (error === 'locked') return 'Demasiados intentos fallidos. Espera 5 minutos.';
+    if (error === 'pin_required') return 'El PIN debe tener 4 dígitos.';
+    return 'No se pudo cambiar el modo infantil. Inténtalo de nuevo.';
+  };
+
+  const handleKidsToggle = async () => {
+    if (pinLoading) return;
+    if (user.kids_mode_enabled) {
+      setPinModal('verify');
+      return;
+    }
+    if (!user.kids_pin_set) {
+      setPinModal('create');
+      return;
+    }
+    setPinLoading(true);
+    try {
+      await setKidsMode(true);
+    } finally {
+      setPinLoading(false);
     }
   };
 
-  const handleEmailAuthSubmit = (e: React.FormEvent) => {
+  const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!authEmail) return;
-    loginWithEmail(authEmail, authName);
-    setAuthModalOpen(false);
+    if (!/^[0-9]{4}$/.test(pinInput)) {
+      setPinError(pinErrorMessage('pin_required'));
+      return;
+    }
+    setPinLoading(true);
+    try {
+      const result = await setKidsMode(pinModal === 'create', pinInput);
+      if (result.ok) closePinModal();
+      else setPinError(pinErrorMessage(result.error));
+    } catch {
+      setPinError(pinErrorMessage());
+    } finally {
+      setPinLoading(false);
+    }
+  };
+
+  const openAuthModal = () => {
+    setAuthStatus(null);
+    setAuthModalOpen(true);
+  };
+
+  // In local demo mode login is instant; with Supabase the email flow sends a magic link
+  // and Google redirects away, so we keep the modal open to show the result.
+  const handleAuthResult = (result: { ok: boolean; message: string }) => {
+    setAuthLoading(false);
+    if (result.ok && authMode === 'local') {
+      setAuthModalOpen(false);
+      return;
+    }
+    setAuthStatus(result);
+  };
+
+  const handleEmailAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authEmail || authLoading) return;
+    setAuthLoading(true);
+    setAuthStatus(null);
+    handleAuthResult(await loginWithEmail(authEmail, authName));
+  };
+
+  const handleGoogleLogin = async () => {
+    if (authLoading) return;
+    setAuthLoading(true);
+    setAuthStatus(null);
+    handleAuthResult(await loginWithGoogle());
   };
 
   return (
@@ -54,6 +125,26 @@ export const ProfileScreen: React.FC = () => {
       <TopNavBar />
 
       <div className="px-4 space-y-6 pt-3">
+        {(checkoutResult === 'success' || checkoutResult === 'cancelled') && (
+          <div
+            role="status"
+            className={`p-3 rounded-2xl border text-xs font-semibold flex items-center justify-between gap-3 ${
+              checkoutResult === 'success'
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                : 'bg-slate-900 border-slate-800 text-slate-300'
+            }`}
+          >
+            <span>
+              {checkoutResult === 'success'
+                ? '¡Pago completado! Tu compra aparecerá en tu cuenta en unos segundos.'
+                : 'Pago cancelado. No se ha realizado ningún cargo.'}
+            </span>
+            <button onClick={dismissCheckoutResult} aria-label="Cerrar aviso" className="text-slate-400 hover:text-white">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* User Card */}
         <div className="p-4 sm:p-5 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-xl flex items-center justify-between">
           <div className="flex items-center gap-3.5">
@@ -87,14 +178,14 @@ export const ProfileScreen: React.FC = () => {
           <div>
             {isAuthenticated ? (
               <button
-                onClick={() => setAuthModalOpen(true)}
+                onClick={openAuthModal}
                 className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
               >
                 Cuenta
               </button>
             ) : (
               <button
-                onClick={() => setAuthModalOpen(true)}
+                onClick={openAuthModal}
                 className="px-3.5 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-bold shadow-lg"
               >
                 Iniciar sesión
@@ -236,11 +327,13 @@ export const ProfileScreen: React.FC = () => {
                 <span className="text-xs font-bold text-slate-200">Modo Infantil con PIN</span>
               </div>
               <p className="text-[11px] text-slate-400 max-w-xs">
-                Filtra clásicos con violencia o temas adultos. PIN por defecto: 1234.
+                Filtra clásicos con violencia o temas adultos. Hace falta tu PIN para desactivarlo.
               </p>
             </div>
             <button
-              onClick={toggleKidsMode}
+              onClick={handleKidsToggle}
+              disabled={pinLoading}
+              aria-label={user.kids_mode_enabled ? 'Desactivar modo infantil' : 'Activar modo infantil'}
               className={`w-12 h-7 rounded-full p-1 transition-colors flex items-center ${
                 user.kids_mode_enabled ? 'bg-emerald-500 justify-end' : 'bg-slate-800 justify-start'
               }`}
@@ -314,8 +407,9 @@ export const ProfileScreen: React.FC = () => {
 
             {/* Google Login Button */}
             <button
-              onClick={() => { loginWithGoogle(); setAuthModalOpen(false); }}
-              className="w-full py-3 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center gap-2.5 shadow active:scale-98 transition-all"
+              onClick={handleGoogleLogin}
+              disabled={authLoading}
+              className="w-full disabled:opacity-60 py-3 px-4 rounded-xl bg-white hover:bg-slate-100 text-slate-950 font-bold text-xs flex items-center justify-center gap-2.5 shadow active:scale-98 transition-all"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -359,17 +453,33 @@ export const ProfileScreen: React.FC = () => {
 
               <button
                 type="submit"
-                className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs transition-colors"
+                disabled={authLoading}
+                className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-slate-950 font-bold text-xs transition-colors"
               >
-                Acceder a mi cuenta
+                {authLoading ? 'Enviando…' : authMode === 'supabase' ? 'Enviarme un enlace de acceso' : 'Acceder a mi cuenta'}
               </button>
             </form>
+
+            {authStatus && (
+              <p
+                role="status"
+                className={`text-[11px] font-semibold text-center ${authStatus.ok ? 'text-emerald-400' : 'text-rose-400'}`}
+              >
+                {authStatus.message}
+              </p>
+            )}
+
+            {authMode === 'local' && (
+              <p className="text-[10px] text-slate-500 text-center">
+                Modo demo local: los datos se guardan solo en este dispositivo.
+              </p>
+            )}
           </div>
         </div>
       )}
 
       {/* Kids Mode PIN Verification Modal */}
-      {kidsPinModalOpen && (
+      {pinModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
           <div 
             className="w-full max-w-xs bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4 text-center relative"
@@ -381,10 +491,12 @@ export const ProfileScreen: React.FC = () => {
 
             <div>
               <h3 className="font-display text-base font-bold text-slate-100">
-                PIN de Modo Infantil
+                {pinModal === 'create' ? 'Crea tu PIN parental' : 'PIN de Modo Infantil'}
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Introduce el PIN de 4 dígitos para desactivar el filtro parental (PIN por defecto: 1234).
+                {pinModal === 'create'
+                  ? 'Elige un PIN de 4 dígitos. Lo necesitarás para desactivar el modo infantil.'
+                  : 'Introduce el PIN de 4 dígitos para desactivar el filtro parental.'}
               </p>
             </div>
 
@@ -392,32 +504,34 @@ export const ProfileScreen: React.FC = () => {
               <input
                 type="password"
                 maxLength={4}
+                inputMode="numeric"
                 autoFocus
                 placeholder="••••"
                 value={pinInput}
-                onChange={(e) => { setPinInput(e.target.value); setPinError(false); }}
+                onChange={(e) => { setPinInput(e.target.value.replace(/\D/g, '')); setPinError(null); }}
                 className="w-36 mx-auto text-center font-mono text-2xl tracking-widest px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-amber-300 focus:outline-none focus:border-amber-400"
               />
 
               {pinError && (
-                <p className="text-[11px] text-rose-400 font-semibold">
-                  PIN incorrecto. Vuelve a intentarlo.
+                <p role="alert" className="text-[11px] text-rose-400 font-semibold">
+                  {pinError}
                 </p>
               )}
 
               <div className="flex gap-2 pt-1">
                 <button
                   type="button"
-                  onClick={closeKidsPinVerification}
+                  onClick={closePinModal}
                   className="flex-1 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold"
+                  disabled={pinLoading}
+                  className="flex-1 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-60 text-slate-950 text-xs font-bold"
                 >
-                  Confirmar
+                  {pinLoading ? '…' : pinModal === 'create' ? 'Activar' : 'Confirmar'}
                 </button>
               </div>
             </form>

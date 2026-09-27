@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { SEED_BOOKS, SEED_CHARACTERS, SEED_ADAPTATIONS, SEED_EPISODES } from '../../data/seedBooks';
+import { useCatalogStore } from '../../stores/useCatalogStore';
 import { BookFormat } from '../../types';
 import { usePlayerStore } from '../../stores/usePlayerStore';
 import { useLibraryStore } from '../../stores/useLibraryStore';
@@ -11,23 +11,36 @@ import {
 } from 'lucide-react';
 
 export const BookDetailScreen: React.FC = () => {
+  const { books, charactersByBook, adaptationsByBook, episodesByAdaptation } = useCatalogStore();
   const { bookId } = useParams<{ bookId: string }>();
   const navigate = useNavigate();
   const { playEpisode } = usePlayerStore();
-  const { items, progress, toggleBookmark, downloadEpisodeOffline, isBookDownloaded } = useLibraryStore();
+  const { items, progress, toggleBookmark, downloadBook, downloads, isBookDownloaded } = useLibraryStore();
   const { isEpisodeAccessible, openUnlockModal } = useWalletStore();
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const [selectedFormat, setSelectedFormat] = useState<BookFormat>('drama');
 
-  const book = SEED_BOOKS.find(b => b.id === bookId) || SEED_BOOKS[0];
-  const characters = SEED_CHARACTERS[book.id] || [];
-  const adaptations = SEED_ADAPTATIONS[book.id] || [];
+  const book = books.find(b => b.id === bookId) || books[0];
+  const characters = charactersByBook[book.id] || [];
+  const adaptations = adaptationsByBook[book.id] || [];
 
   const currentAdaptation = adaptations.find(a => a.format === selectedFormat) || adaptations[0];
-  const episodes = currentAdaptation ? (SEED_EPISODES[currentAdaptation.id] || []) : [];
+  const episodes = currentAdaptation ? (episodesByAdaptation[currentAdaptation.id] || []) : [];
 
   const isBookmarked = items[book.id]?.is_bookmarked;
   const isDownloaded = isBookDownloaded(book.id);
+  const downloadProgress = downloads[book.id];
+
+  // Only episodes the user can already watch are saved, so downloads never bypass the paywall.
+  const handleDownload = async () => {
+    setDownloadError(null);
+    try {
+      await downloadBook(book.id, episodes.filter(isEpisodeAccessible));
+    } catch (e) {
+      setDownloadError(e instanceof Error ? e.message : 'No se pudo descargar.');
+    }
+  };
 
   // Find latest progress
   const bookProgressList = Object.values(progress).filter(p => p.book_id === book.id);
@@ -74,16 +87,30 @@ export const BookDetailScreen: React.FC = () => {
           </button>
 
           <button
-            onClick={() => downloadEpisodeOffline(book.id, episodes[0]?.id || 'ep-1')}
-            className={`w-10 h-10 rounded-full backdrop-blur-md flex items-center justify-center transition-colors shadow-lg active:scale-95 ${
+            onClick={handleDownload}
+            disabled={Boolean(downloadProgress)}
+            aria-label={isDownloaded ? 'Descargado para ver sin conexión' : 'Descargar para ver sin conexión'}
+            className={`relative w-10 h-10 rounded-full backdrop-blur-md flex items-center justify-center transition-colors shadow-lg active:scale-95 ${
               isDownloaded ? 'bg-emerald-500 text-slate-950' : 'bg-slate-900/80 text-white hover:text-emerald-400'
             }`}
             title={isDownloaded ? 'Descargado offline' : 'Descargar para ver sin conexión'}
           >
-            <Download className="w-5 h-5" />
+            <Download className={`w-5 h-5 ${downloadProgress ? 'animate-pulse' : ''}`} />
+            {downloadProgress && (
+              <span className="absolute -bottom-1 -right-1 px-1 rounded-full bg-emerald-500 text-slate-950 text-[9px] font-bold">
+                {downloadProgress.done}/{downloadProgress.total}
+              </span>
+            )}
           </button>
         </div>
       </div>
+
+      {downloadError && (
+        <div role="alert" className="fixed bottom-20 left-4 right-4 z-40 max-w-md mx-auto p-3 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl text-xs text-slate-200 flex justify-between gap-2">
+          <span>{downloadError}</span>
+          <button onClick={() => setDownloadError(null)} aria-label="Cerrar aviso" className="text-slate-500 hover:text-white">✕</button>
+        </div>
+      )}
 
       {/* Hero Backdrop & Book Cover */}
       <div className="relative w-full h-80 sm:h-96 overflow-hidden">

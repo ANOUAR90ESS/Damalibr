@@ -7,9 +7,14 @@ import { CategoriesScreen } from './features/categories/CategoriesScreen';
 import { LibraryScreen } from './features/library/LibraryScreen';
 import { ProfileScreen } from './features/profile/ProfileScreen';
 import { AdminPipelineScreen } from './features/pipeline/AdminPipelineScreen';
+import { AdminRoute } from './features/pipeline/AdminRoute';
 import { BottomNavBar } from './features/navigation/BottomNavBar';
 import { VideoPlayer } from './features/player/VideoPlayer';
 import { MiniPlayer } from './features/player/MiniPlayer';
+import { UnlockModal } from './features/player/UnlockModal';
+import { CoinShopModal } from './features/player/CoinShopModal';
+import { VipModal } from './features/player/VipModal';
+import { NativeBridge } from './features/native/NativeBridge';
 
 function AppLayout() {
   const location = useLocation();
@@ -18,6 +23,8 @@ function AppLayout() {
 
   return (
     <div className="relative min-h-screen bg-[#090a0f] text-slate-100 selection:bg-amber-500/30 selection:text-amber-200">
+      <NativeBridge />
+
       {/* Route Views */}
       <main className="w-full">
         <Routes>
@@ -27,7 +34,7 @@ function AppLayout() {
           <Route path="/categories" element={<CategoriesScreen />} />
           <Route path="/library" element={<LibraryScreen />} />
           <Route path="/profile" element={<ProfileScreen />} />
-          <Route path="/studio" element={<AdminPipelineScreen />} />
+          <Route path="/studio" element={<AdminRoute><AdminPipelineScreen /></AdminRoute>} />
           <Route path="*" element={<HomeScreen />} />
         </Routes>
       </main>
@@ -37,6 +44,11 @@ function AppLayout() {
 
       {/* Fullscreen Video Player modal/overlay */}
       <VideoPlayer />
+
+      {/* Wallet modals: global so they open from any screen, above the player */}
+      <UnlockModal />
+      <CoinShopModal />
+      <VipModal />
 
       {/* Fixed Bottom Mobile Navigation Bar */}
       <BottomNavBar />
