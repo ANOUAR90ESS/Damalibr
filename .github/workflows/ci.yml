@@ -19,6 +19,9 @@ jobs:
         with:
           bun-version: 1.2.14
 
+      - name: Install FFmpeg (pipeline render tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
 

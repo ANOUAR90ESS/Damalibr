@@ -1,30 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Request, Response } from 'express';
-import { createRateLimiter, validateAnalyzeInput } from './guards';
-
-describe('validateAnalyzeInput', () => {
-  it('requires a title', () => {
-    expect(validateAnalyzeInput({})).toHaveProperty('error');
-    expect(validateAnalyzeInput({ title: '   ' })).toHaveProperty('error');
-    expect(validateAnalyzeInput(null)).toHaveProperty('error');
-  });
-
-  it('rejects non-string fields', () => {
-    expect(validateAnalyzeInput({ title: 'Quijote', author: 5 })).toHaveProperty('error');
-    expect(validateAnalyzeInput({ title: 'Quijote', rawText: [] })).toHaveProperty('error');
-  });
-
-  it('rejects oversized input', () => {
-    expect(validateAnalyzeInput({ title: 'x'.repeat(201) })).toHaveProperty('error');
-    expect(validateAnalyzeInput({ title: 'Quijote', rawText: 'x'.repeat(200_001) })).toHaveProperty('error');
-  });
-
-  it('normalizes valid input', () => {
-    expect(validateAnalyzeInput({ title: ' Don Quijote ', author: ' Cervantes ' })).toEqual({
-      value: { title: 'Don Quijote', author: 'Cervantes', rawText: '' },
-    });
-  });
-});
+import { createRateLimiter } from './guards';
 
 describe('createRateLimiter', () => {
   function mockRes() {

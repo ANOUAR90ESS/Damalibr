@@ -1,12 +1,14 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Home, PlaySquare, Compass, Bookmark, User, Wand2 } from 'lucide-react';
+import { useAuthStore } from '../../stores/useAuthStore';
 
 export const BottomNavBar: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const canUseStudio = useAuthStore(s => s.authMode === 'local' || s.role === 'admin');
 
-  const navItems = [
+  const allItems = [
     { path: '/', label: 'Inicio', icon: Home },
     { path: '/feed', label: 'Para Ti', icon: PlaySquare, badge: '9:16' },
     { path: '/categories', label: 'Explorar', icon: Compass },
@@ -14,10 +16,12 @@ export const BottomNavBar: React.FC = () => {
     { path: '/studio', label: 'Estudio IA', icon: Wand2, isSpecial: true },
     { path: '/profile', label: 'Perfil', icon: User },
   ];
+  // With real accounts the AI studio is only for admins.
+  const navItems = canUseStudio ? allItems : allItems.filter(i => i.path !== '/studio');
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-40 bg-[#0c0e14]/95 backdrop-blur-lg border-t border-slate-800/80 pb-safe">
-      <div className="max-w-md mx-auto grid grid-cols-6 items-center h-15 px-1">
+      <div className={`max-w-md mx-auto grid ${navItems.length === 6 ? 'grid-cols-6' : 'grid-cols-5'} items-center h-15 px-1`}>
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = location.pathname === item.path || 

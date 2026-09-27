@@ -1,6 +1,7 @@
 import { supabase } from '../supabase';
 import { Transaction } from '../../types';
 import type { ProductId } from '../products';
+import { apiRequest } from './http';
 
 export interface RemoteWallet {
   balance: number;
@@ -39,23 +40,14 @@ export async function unlockEpisodeRemote(episodeId: string): Promise<{ status: 
   return data as { status: UnlockStatus; balance: number };
 }
 
-async function postWithSession(path: string, body: object): Promise<string> {
-  const { data } = await client().auth.getSession();
-  const token = data.session?.access_token;
-  if (!token) throw new Error('Inicia sesión para continuar.');
-
-  const res = await fetch(path, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok || !json.url) throw new Error(json.error || 'No se pudo conectar con el servicio de pagos.');
-  return json.url as string;
+async function postForUrl(path: string, body: object): Promise<string> {
+  const { url } = await apiRequest<{ url?: string }>(path, { method: 'POST', body, requireAuth: true });
+  if (!url) throw new Error('No se pudo conectar con el servicio de pagos.');
+  return url;
 }
 
 // Returns the Stripe Checkout URL for the product; the caller redirects to it.
-export const createCheckout = (productId: ProductId) => postWithSession('/api/checkout', { productId });
+export const createCheckout = (productId: ProductId) => postForUrl('/api/checkout', { productId });
 
 // Returns the Stripe customer portal URL (cancel VIP, update card, invoices).
-export const createBillingPortal = () => postWithSession('/api/billing-portal', {});
+export const createBillingPortal = () => postForUrl('/api/billing-portal', {});

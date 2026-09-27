@@ -7,6 +7,7 @@ import { CategoriesScreen } from './features/categories/CategoriesScreen';
 import { LibraryScreen } from './features/library/LibraryScreen';
 import { ProfileScreen } from './features/profile/ProfileScreen';
 import { AdminPipelineScreen } from './features/pipeline/AdminPipelineScreen';
+import { AdminRoute } from './features/pipeline/AdminRoute';
 import { BottomNavBar } from './features/navigation/BottomNavBar';
 import { VideoPlayer } from './features/player/VideoPlayer';
 import { MiniPlayer } from './features/player/MiniPlayer';
@@ -30,7 +31,7 @@ function AppLayout() {
           <Route path="/categories" element={<CategoriesScreen />} />
           <Route path="/library" element={<LibraryScreen />} />
           <Route path="/profile" element={<ProfileScreen />} />
-          <Route path="/studio" element={<AdminPipelineScreen />} />
+          <Route path="/studio" element={<AdminRoute><AdminPipelineScreen /></AdminRoute>} />
           <Route path="*" element={<HomeScreen />} />
         </Routes>
       </main>
