@@ -54,5 +54,25 @@ export function createJobRouter(admin: SupabaseClient|null, production: boolean)
       res.status(202).json({jobId:job.id,dbJobId,status:'queued'});
     } finally { await queue.close(); }
   });
+  router.get('/:jobId', async (req:AuthRequest,res:Response)=>{
+    if(!admin) return res.status(503).json({error:'Supabase no está configurado.'});
+    const {data,error}=await admin.from('production_jobs').select('*').eq('id',req.params.jobId).eq('owner_id',req.userId).single();
+    if(error || !data) return res.status(404).json({error:'Job no encontrado.'});
+    res.json(data);
+  });
+
+  router.post('/:jobId/cancel', async (req:AuthRequest,res:Response)=>{
+    if(!admin) return res.status(503).json({error:'Supabase no está configurado.'});
+    const {data,error}=await admin.from('production_jobs').select('id,queue_job_id,status').eq('id',req.params.jobId).eq('owner_id',req.userId).single();
+    if(error || !data) return res.status(404).json({error:'Job no encontrado.'});
+    if(['completed','failed','cancelled'].includes(data.status)) return res.status(409).json({error:'El job ya terminó.'});
+    const queue=new BullMQProductionQueue();
+    try {
+      if(data.queue_job_id) await queue.cancel(data.queue_job_id);
+      await admin.from('production_jobs').update({status:'cancelled'}).eq('id',data.id).eq('owner_id',req.userId);
+      res.json({status:'cancelled'});
+    } finally { await queue.close(); }
+  });
+
   return router;
 }
