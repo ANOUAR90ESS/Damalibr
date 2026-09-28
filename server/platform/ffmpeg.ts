@@ -23,12 +23,31 @@ function ffmpegPath() {
   return process.env.FFMPEG_PATH || 'ffmpeg';
 }
 
-export async function renderVideo(options: RenderOptions): Promise<void> {
-  if (!options.scenes.length) throw new Error('No hay escenas para renderizar.');
-
+export function buildRenderArgs(options: RenderOptions, concatFile: string): string[] {
   const width = options.width || 1920;
   const height = options.height || 1080;
   const fps = options.fps || 30;
+  const videoFilters = [
+    `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
+    `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
+    'format=yuv420p',
+    ...(options.subtitlePath ? [`subtitles='${options.subtitlePath.replace(/'/g, "'\\''")}'`] : []),
+  ].join(',');
+  const totalDuration = options.scenes.reduce((sum, scene) => sum + Math.max(0.1, scene.duration), 0);
+  return [
+    '-y', '-f', 'concat', '-safe', '0', '-i', concatFile,
+    ...(options.audioPath ? ['-i', options.audioPath] : []),
+    '-vf', videoFilters,
+    '-r', String(fps), '-c:v', 'libx264', '-preset', process.env.FFMPEG_PRESET || 'veryfast',
+    '-movflags', '+faststart',
+    ...(options.audioPath ? ['-af', 'apad', '-c:a', 'aac', '-b:a', '192k', '-t', totalDuration.toFixed(3)] : ['-an']),
+    options.outputPath,
+  ];
+}
+
+export async function renderVideo(options: RenderOptions): Promise<void> {
+  if (!options.scenes.length) throw new Error('No hay escenas para renderizar.');
+
   const workDir = path.join(path.dirname(options.outputPath), '.render-' + Date.now());
   await mkdir(workDir, { recursive: true });
 
@@ -42,22 +61,7 @@ export async function renderVideo(options: RenderOptions): Promise<void> {
     await (await import('node:fs/promises')).writeFile(concatFile, lines.join('\n') + '\n');
 
     await new Promise<void>((resolve, reject) => {
-      const videoFilters = [
-        `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
-        `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
-        'format=yuv420p',
-        ...(options.subtitlePath ? [`subtitles='${options.subtitlePath.replace(/'/g, "'\\''")}'`] : []),
-      ].join(',');
-
-      const args = [
-        '-y', '-f', 'concat', '-safe', '0', '-i', concatFile,
-        ...(options.audioPath ? ['-i', options.audioPath] : []),
-        '-vf', videoFilters,
-        '-r', String(fps), '-c:v', 'libx264', '-preset', process.env.FFMPEG_PRESET || 'veryfast',
-        '-movflags', '+faststart',
-        ...(options.audioPath ? ['-c:a', 'aac', '-b:a', '192k', '-shortest'] : ['-an']),
-        options.outputPath,
-      ];
+      const args = buildRenderArgs(options, concatFile);
       const child = spawn(ffmpegPath(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
       let stderr = '';
       child.stderr.on('data', chunk => {
