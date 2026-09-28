@@ -65,9 +65,9 @@ export function createJobRouter(admin: SupabaseClient|null, production: boolean)
       const {data:ep}=await admin.from('creator_episodes').select('id').eq('id',episodeId).eq('project_id',projectId).eq('owner_id',req.userId).single();
       if(!ep) return res.status(404).json({error:'Episodio no encontrado.'});
     }
-    const keys=scenes.map((s:any)=>typeof s?.storageKey==='string'?s.storageKey:'').filter(Boolean);
+    const keys=[...scenes.map((s:any)=>typeof s?.storageKey==='string'?s.storageKey:''),audioStorageKey,subtitleStorageKey].filter((x): x is string=>Boolean(x));
     const {data:media}=await admin.from('creator_media').select('storage_key').eq('project_id',projectId).eq('owner_id',req.userId).in('storage_key',keys);
-    if((media||[]).length!==keys.length) return res.status(400).json({error:'Una o más imágenes no pertenecen al proyecto.'});
+    if((media||[]).length!==keys.length) return res.status(400).json({error:'Uno o más recursos multimedia no pertenecen al proyecto.'});
     const queue=new BullMQProductionQueue();
     try {
       const payload={projectId,episodeId,profileId:typeof profileId==='string'?profileId:'youtube-1080p',
