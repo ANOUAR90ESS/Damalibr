@@ -42,17 +42,20 @@ export async function renderVideo(options: RenderOptions): Promise<void> {
     await (await import('node:fs/promises')).writeFile(concatFile, lines.join('\n') + '\n');
 
     await new Promise<void>((resolve, reject) => {
+      const videoFilters = [
+        `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
+        `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
+        'format=yuv420p',
+        ...(options.subtitlePath ? [`subtitles='${options.subtitlePath.replace(/'/g, "'\\''")}'`] : []),
+      ].join(',');
+
       const args = [
         '-y', '-f', 'concat', '-safe', '0', '-i', concatFile,
-        '-vf', [
-          `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
-          `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
-          'format=yuv420p',
-          ...(options.subtitlePath ? [`subtitles='${options.subtitlePath.replace(/'/g, "'\\''")}'`] : []),
-        ].join(','),
+        ...(options.audioPath ? ['-i', options.audioPath] : []),
+        '-vf', videoFilters,
         '-r', String(fps), '-c:v', 'libx264', '-preset', process.env.FFMPEG_PRESET || 'veryfast',
         '-movflags', '+faststart',
-        ...(options.audioPath ? ['-i', options.audioPath, '-c:a', 'aac', '-b:a', '192k', '-shortest'] : ['-an']),
+        ...(options.audioPath ? ['-c:a', 'aac', '-b:a', '192k', '-shortest'] : ['-an']),
         options.outputPath,
       ];
       const child = spawn(ffmpegPath(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
