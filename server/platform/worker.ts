@@ -96,7 +96,8 @@ async function updateExport(job: Job, patch: Record<string, unknown>) {
 
 async function processJob(job: Job) {
   console.log(`[creator-worker] ${job.id} ${job.name} started`);
-  await updateExport(job, { status: 'processing' });\n  await updateDb(job, { status: 'running', started_at: new Date().toISOString(), progress: 5 });
+  await updateExport(job, { status: 'processing' });
+  await updateDb(job, { status: 'running', started_at: new Date().toISOString(), progress: 5 });
   await job.updateProgress(10);
 
   try {
@@ -105,11 +106,13 @@ async function processJob(job: Job) {
       : { status: 'accepted', type: job.name };
 
     await job.updateProgress(100);
-    await updateExport(job, { status: 'ready', storage_key: result?.storageKey || null, metadata: result || {} });\n    await updateDb(job, { status: 'completed', progress: 100, result, completed_at: new Date().toISOString() });
+    await updateExport(job, { status: 'ready', storage_key: 'storageKey' in result ? result.storageKey : null, metadata: result || {} });
+    await updateDb(job, { status: 'completed', progress: 100, result, completed_at: new Date().toISOString() });
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await updateExport(job, { status: 'failed', metadata: { error: message } });\n    await updateDb(job, { status: 'failed', error: message });
+    await updateExport(job, { status: 'failed', metadata: { error: message } });
+    await updateDb(job, { status: 'failed', error: message });
     throw error;
   }
 }
