@@ -21,7 +21,8 @@
     "db:seed": "tsx scripts/generate-seed.ts",
     "cap:sync": "bun run build && cap sync",
     "cap:android": "cap open android",
-    "cap:ios": "cap open ios"
+    "cap:ios": "cap open ios",
+    "worker": "tsx server/platform/worker.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.2",
