@@ -80,6 +80,7 @@ router.post('/render', async (req:AuthRequest,res:Response)=>{
         owner_id:req.userId,project_id:projectId,episode_id:episodeId||null,type:'video.render',status:'queued',payload,progress:0
       }).select('id').single();
       if(error||!created) return res.status(500).json({error:'No se pudo registrar el render.'});
+      await admin.from('creator_exports').insert({owner_id:req.userId,project_id:projectId,episode_id:episodeId||null,job_id:created.id,profile_id:payload.profileId,status:'queued',metadata:{source:'creator-studio'}});
       const job=await queue.enqueue('video.render',{...payload,ownerId:req.userId,dbJobId:created.id},{});
       await admin.from('production_jobs').update({queue_job_id:job.id}).eq('id',created.id).eq('owner_id',req.userId);
       res.status(202).json({jobId:job.id,dbJobId:created.id,status:'queued'});
