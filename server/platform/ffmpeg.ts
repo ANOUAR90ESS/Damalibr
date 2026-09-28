@@ -72,3 +72,23 @@ export async function renderVideo(options: RenderOptions): Promise<void> {
     await rm(workDir, { recursive: true, force: true });
   }
 }
+
+
+export async function generateThumbnail(inputPath: string, outputPath: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const args = [
+      '-y', '-ss', '1', '-i', inputPath,
+      '-frames:v', '1', '-q:v', '2', outputPath,
+    ];
+    const child = spawn(ffmpegPath(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    child.stderr.on('data', chunk => {
+      stderr += chunk.toString();
+      if (stderr.length > 4000) stderr = stderr.slice(-4000);
+    });
+    child.once('error', reject);
+    child.once('close', code => code === 0
+      ? resolve()
+      : reject(new Error(`FFmpeg thumbnail terminó con código ${code}: ${stderr.slice(-1200)}`)));
+  });
+}
