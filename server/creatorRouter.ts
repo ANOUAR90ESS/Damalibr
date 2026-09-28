@@ -136,6 +136,20 @@ export function createCreatorRouter(admin: SupabaseClient | null, production: bo
     res.status(201).json({ scene: data });
   });
 
+  router.patch('/scenes/:sceneId', async (req: AuthRequest, res) => {
+    if (!admin) return res.json({ scene: { id: req.params.sceneId, ...(req.body || {}) } });
+    const { data: existing } = await admin.from('creator_scenes').select('*').eq('id', req.params.sceneId).eq('owner_id', req.userId).single();
+    if (!existing) return res.status(404).json({ error: 'Escena no encontrada.' });
+    const patch: Record<string, unknown> = {};
+    if (typeof req.body?.title === 'string') patch.title = clean(req.body.title, 200);
+    if (req.body?.script && typeof req.body.script === 'object') patch.script = req.body.script;
+    if (req.body?.metadata && typeof req.body.metadata === 'object') patch.metadata = { ...(existing.metadata || {}), ...req.body.metadata };
+    if (Number.isInteger(req.body?.scene_order) && req.body.scene_order > 0) patch.scene_order = req.body.scene_order;
+    const { data, error } = await admin.from('creator_scenes').update(patch).eq('id', existing.id).eq('owner_id', req.userId).select('*').single();
+    if (error || !data) return res.status(500).json({ error: 'No se pudo actualizar la escena.' });
+    res.json({ scene: data });
+  });
+
   router.get('/projects/:projectId/media', async (req: AuthRequest, res) => {
     if (!admin) return res.json({ media: [] });
     const { data, error } = await admin.from('creator_media').select('*').eq('project_id', req.params.projectId).eq('owner_id', req.userId).order('created_at', { ascending: false });
