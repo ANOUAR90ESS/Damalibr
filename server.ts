@@ -14,6 +14,7 @@ import { PipelineService } from './server/pipeline/service';
 import { createPipelineRouter, requireAdmin } from './server/pipeline/router';
 import { createMediaRouter } from './server/mediaRouter';
 import { createCreatorRouter } from './server/creatorRouter';
+import { createJobRouter } from './server/jobRouter';
 
 dotenv.config();
 
@@ -55,6 +56,7 @@ const mediaStore = supabaseAdmin
   : new LocalMediaStore(localMediaDir);
 app.use('/api/media', createMediaRouter(mediaStore, supabaseAdmin, isProduction));
 app.use('/api/creator', createCreatorRouter(supabaseAdmin, isProduction));
+app.use('/api/jobs', createJobRouter(supabaseAdmin, isProduction));
 
 // AI production pipeline (admins only). Without a Gemini key it runs in simulated mode;
 // without Supabase it keeps jobs in memory and media on local disk.
