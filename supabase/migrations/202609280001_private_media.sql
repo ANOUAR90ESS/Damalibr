@@ -1,6 +1,4 @@
 -- Phase 0: generated media must not be publicly readable.
--- Run this migration in the Supabase project used by Damalibr.
---
 -- The application server uses the service role to upload/download and creates
 -- short-lived signed URLs after authenticating the requesting user.
 
@@ -12,4 +10,5 @@ on conflict (id) do update set public = false;
 -- RLS, while the application exposes media through /api/media.
 drop policy if exists "Public Access" on storage.objects;
 drop policy if exists "Public media read" on storage.objects;
+drop policy if exists "Public media read access" on storage.objects;
 drop policy if exists "Public read media" on storage.objects;
