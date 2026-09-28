@@ -15,6 +15,8 @@ import { UnlockModal } from './features/player/UnlockModal';
 import { CoinShopModal } from './features/player/CoinShopModal';
 import { VipModal } from './features/player/VipModal';
 import { NativeBridge } from './features/native/NativeBridge';
+import { CreatorStudioScreen } from './features/creator/CreatorStudioScreen';
+import { CreatorProjectScreen } from './features/creator/CreatorProjectScreen';
 
 function AppLayout() {
   const location = useLocation();
@@ -34,7 +36,9 @@ function AppLayout() {
           <Route path="/categories" element={<CategoriesScreen />} />
           <Route path="/library" element={<LibraryScreen />} />
           <Route path="/profile" element={<ProfileScreen />} />
-          <Route path="/studio" element={<AdminRoute><AdminPipelineScreen /></AdminRoute>} />
+          <Route path="/studio" element={<CreatorStudioScreen />} />
+          <Route path="/studio/project/:projectId" element={<CreatorProjectScreen />} />
+          <Route path="/admin/pipeline" element={<AdminRoute><AdminPipelineScreen /></AdminRoute>} />
           <Route path="*" element={<HomeScreen />} />
         </Routes>
       </main>
