@@ -6,6 +6,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 export interface MediaStore {
   put(key: string, data: Buffer, contentType: string): Promise<string>;
   read(key: string): Promise<Buffer>;
+  /** Returns a short-lived URL for direct client access when supported. */
+  getSignedUrl?(key: string, expiresInSeconds?: number): Promise<string>;
 }
 
 const safeKey = (key: string) => {
@@ -14,11 +16,11 @@ const safeKey = (key: string) => {
   return normalized;
 };
 
-/** Local disk, served by Express at `publicPrefix` (development / demo mode). */
+/** Local disk, served through the authenticated /api/media endpoint in production. */
 export class LocalMediaStore implements MediaStore {
   constructor(private dir: string, private publicPrefix = '/media') {}
 
-  async put(key: string, data: Buffer): Promise<string> {
+  async put(key: string, data: Buffer, _contentType: string): Promise<string> {
     const k = safeKey(key);
     const file = path.join(this.dir, k);
     await mkdir(path.dirname(file), { recursive: true });
@@ -31,20 +33,34 @@ export class LocalMediaStore implements MediaStore {
   }
 }
 
-/** Supabase Storage public bucket (production). */
+/** Supabase Storage private bucket (production). */
 export class SupabaseMediaStore implements MediaStore {
   constructor(private admin: SupabaseClient, private bucket = 'media') {}
 
   async put(key: string, data: Buffer, contentType: string): Promise<string> {
     const k = safeKey(key);
-    const { error } = await this.admin.storage.from(this.bucket).upload(k, data, { contentType, upsert: true });
+    const { error } = await this.admin.storage.from(this.bucket).upload(k, data, {
+      contentType,
+      upsert: true,
+    });
     if (error) throw error;
-    return this.admin.storage.from(this.bucket).getPublicUrl(k).data.publicUrl;
+
+    // Never expose a permanent public Storage URL. The bucket is private.
+    return `/api/media?key=${encodeURIComponent(k)}`;
   }
 
   async read(key: string): Promise<Buffer> {
     const { data, error } = await this.admin.storage.from(this.bucket).download(safeKey(key));
     if (error) throw error;
     return Buffer.from(await data.arrayBuffer());
+  }
+
+  async getSignedUrl(key: string, expiresInSeconds = 120): Promise<string> {
+    const { data, error } = await this.admin.storage
+      .from(this.bucket)
+      .createSignedUrl(safeKey(key), expiresInSeconds);
+
+    if (error || !data?.signedUrl) throw error || new Error('No se pudo crear la URL firmada.');
+    return data.signedUrl;
   }
 }
