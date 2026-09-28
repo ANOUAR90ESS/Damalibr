@@ -46,7 +46,9 @@
     "react-router-dom": "^7.18.4",
     "stripe": "^22.6.2",
     "vite": "^8.3.0",
-    "zustand": "^5.0.15"
+    "zustand": "^5.0.15",
+    "bullmq": "^5.58.5",
+    "ioredis": "^5.7.0"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.2",
