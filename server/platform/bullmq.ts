@@ -24,6 +24,8 @@ export class BullMQProductionQueue implements ProductionQueue {
       priority: options.priority,
       delay: options.delayMs,
       removeOnComplete: 100,
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 2000 },
       removeOnFail: 500,
     });
     return { id: job.id! };
