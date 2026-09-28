@@ -54,6 +54,34 @@ export function createJobRouter(admin: SupabaseClient|null, production: boolean)
       res.status(202).json({jobId:job.id,dbJobId,status:'queued'});
     } finally { await queue.close(); }
   });
+  router.post('/render', async (req:AuthRequest,res:Response)=>{
+    if(!admin) return res.status(503).json({error:'El render requiere Supabase.'});
+    const { projectId, episodeId, profileId, scenes } = req.body || {};
+    if(typeof projectId !== 'string' || !Array.isArray(scenes) || scenes.length === 0)
+      return res.status(400).json({error:'projectId y scenes son obligatorios.'});
+    const {data:project}=await admin.from('creator_projects').select('id').eq('id',projectId).eq('owner_id',req.userId).single();
+    if(!project) return res.status(404).json({error:'Proyecto no encontrado.'});
+    if(episodeId){
+      const {data:ep}=await admin.from('creator_episodes').select('id').eq('id',episodeId).eq('project_id',projectId).eq('owner_id',req.userId).single();
+      if(!ep) return res.status(404).json({error:'Episodio no encontrado.'});
+    }
+    const keys=scenes.map((s:any)=>typeof s?.storageKey==='string'?s.storageKey:'').filter(Boolean);
+    const {data:media}=await admin.from('creator_media').select('storage_key').eq('project_id',projectId).eq('owner_id',req.userId).in('storage_key',keys);
+    if((media||[]).length!==keys.length) return res.status(400).json({error:'Una o más imágenes no pertenecen al proyecto.'});
+    const queue=new BullMQProductionQueue();
+    try {
+      const payload={projectId,episodeId,profileId:typeof profileId==='string'?profileId:'youtube-1080p',
+        scenes:scenes.map((s:any)=>({storageKey:s.storageKey,duration:Math.max(0.5,Math.min(300,Number(s.duration)||5))))};
+      const {data:created,error}=await admin.from('production_jobs').insert({
+        owner_id:req.userId,project_id:projectId,episode_id:episodeId||null,type:'video.render',status:'queued',payload,progress:0
+      }).select('id').single();
+      if(error||!created) return res.status(500).json({error:'No se pudo registrar el render.'});
+      const job=await queue.enqueue('video.render',{...payload,ownerId:req.userId,dbJobId:created.id},{});
+      await admin.from('production_jobs').update({queue_job_id:job.id}).eq('id',created.id).eq('owner_id',req.userId);
+      res.status(202).json({jobId:job.id,dbJobId:created.id,status:'queued'});
+    } finally { await queue.close(); }
+  });
+
   router.get('/:jobId', async (req:AuthRequest,res:Response)=>{
     if(!admin) return res.status(503).json({error:'Supabase no está configurado.'});
     const {data,error}=await admin.from('production_jobs').select('*').eq('id',req.params.jobId).eq('owner_id',req.userId).single();
