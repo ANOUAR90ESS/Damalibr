@@ -3,7 +3,7 @@ import { createRedisConnection, CREATOR_QUEUE } from './bullmq';
 import { createClient } from '@supabase/supabase-js';
 import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
-import { renderVideo } from './ffmpeg';
+import { renderVideo, generateThumbnail } from './ffmpeg';
 import { EXPORT_PROFILES } from './types';
 
 const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -61,7 +61,7 @@ async function render(job: Job) {
     });
 
     const output = await readFile(outputPath);
-    const storageKey = `projects/${payload.projectId}/video/${job.id}.mp4`;
+    const storageKey = `projects/${payload.projectId}/exports/${payload.episodeId || 'project'}/${profile.id}/${job.id}.mp4`;\n    const thumbnailPath = path.join(temp, 'thumbnail.jpg');\n    await generateThumbnail(outputPath, thumbnailPath);\n    const thumbnail = await readFile(thumbnailPath);\n    const thumbnailKey = `projects/${payload.projectId}/thumbnails/${job.id}.jpg`;\n    const { error: thumbnailError } = await supabase.storage.from('media').upload(thumbnailKey, thumbnail, {\n      contentType: 'image/jpeg', upsert: true,\n    });\n    if (thumbnailError) throw thumbnailError;
     const { error: uploadError } = await supabase.storage.from('media').upload(storageKey, output, {
       contentType: 'video/mp4', upsert: true,
     });
@@ -78,18 +78,25 @@ async function render(job: Job) {
         mime_type: 'video/mp4',
         size_bytes: output.byteLength,
         status: 'ready',
-        metadata: { profileId: profile.id, jobId: job.id },
+        metadata: { profileId: profile.id, jobId: job.id, thumbnailStorageKey: thumbnailKey },
       });
     }
-    return { storageKey, profileId: profile.id, sizeBytes: output.byteLength };
+    return { storageKey, profileId: profile.id, sizeBytes: output.byteLength, thumbnailStorageKey: thumbnailKey, thumbnailSizeBytes: thumbnail.byteLength };
   } finally {
     await rm(temp, { recursive: true, force: true });
   }
 }
 
+async function updateExport(job: Job, patch: Record<string, unknown>) {
+  const data = job.data as { dbJobId?: string; ownerId?: string };
+  if (!supabase || !data.dbJobId || !data.ownerId) return;
+  await supabase.from('creator_exports').update(patch)
+    .eq('job_id', data.dbJobId).eq('owner_id', data.ownerId);
+}
+
 async function processJob(job: Job) {
   console.log(`[creator-worker] ${job.id} ${job.name} started`);
-  await updateDb(job, { status: 'running', started_at: new Date().toISOString(), progress: 5 });
+  await updateExport(job, { status: 'processing' });\n  await updateDb(job, { status: 'running', started_at: new Date().toISOString(), progress: 5 });
   await job.updateProgress(10);
 
   try {
@@ -98,11 +105,11 @@ async function processJob(job: Job) {
       : { status: 'accepted', type: job.name };
 
     await job.updateProgress(100);
-    await updateDb(job, { status: 'completed', progress: 100, result, completed_at: new Date().toISOString() });
+    await updateExport(job, { status: 'ready', storage_key: result?.storageKey || null, metadata: result || {} });\n    await updateDb(job, { status: 'completed', progress: 100, result, completed_at: new Date().toISOString() });
     return result;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await updateDb(job, { status: 'failed', error: message });
+    await updateExport(job, { status: 'failed', metadata: { error: message } });\n    await updateDb(job, { status: 'failed', error: message });
     throw error;
   }
 }
