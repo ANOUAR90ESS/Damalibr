@@ -61,7 +61,15 @@ async function render(job: Job) {
     });
 
     const output = await readFile(outputPath);
-    const storageKey = `projects/${payload.projectId}/exports/${payload.episodeId || 'project'}/${profile.id}/${job.id}.mp4`;\n    const thumbnailPath = path.join(temp, 'thumbnail.jpg');\n    await generateThumbnail(outputPath, thumbnailPath);\n    const thumbnail = await readFile(thumbnailPath);\n    const thumbnailKey = `projects/${payload.projectId}/thumbnails/${job.id}.jpg`;\n    const { error: thumbnailError } = await supabase.storage.from('media').upload(thumbnailKey, thumbnail, {\n      contentType: 'image/jpeg', upsert: true,\n    });\n    if (thumbnailError) throw thumbnailError;
+    const storageKey = `projects/${payload.projectId}/exports/${payload.episodeId || 'project'}/${profile.id}/${job.id}.mp4`;
+    const thumbnailPath = path.join(temp, 'thumbnail.jpg');
+    await generateThumbnail(outputPath, thumbnailPath);
+    const thumbnail = await readFile(thumbnailPath);
+    const thumbnailKey = `projects/${payload.projectId}/thumbnails/${job.id}.jpg`;
+    const { error: thumbnailError } = await supabase.storage.from('media').upload(thumbnailKey, thumbnail, {
+      contentType: 'image/jpeg', upsert: true,
+    });
+    if (thumbnailError) throw thumbnailError;
     const { error: uploadError } = await supabase.storage.from('media').upload(storageKey, output, {
       contentType: 'video/mp4', upsert: true,
     });
