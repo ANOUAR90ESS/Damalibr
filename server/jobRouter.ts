@@ -38,8 +38,20 @@ export function createJobRouter(admin: SupabaseClient|null, production: boolean)
     }
     const queue=new BullMQProductionQueue();
     try {
-      const job=await queue.enqueue(name,{...payload,ownerId:req.userId},{priority:payload.priority});
-      res.status(202).json({jobId:job.id,status:'queued'});
+      let dbJobId: string | undefined;
+      if (admin) {
+        const { data: created, error } = await admin.from('production_jobs').insert({
+          owner_id:req.userId, project_id:projectId, episode_id:episodeId || null,
+          type:name, status:'queued', payload, progress:0
+        }).select('id').single();
+        if (error || !created) return res.status(500).json({error:'No se pudo registrar el job.'});
+        dbJobId=created.id;
+      }
+      const job=await queue.enqueue(name,{...payload,ownerId:req.userId,dbJobId},{priority:payload.priority});
+      if (admin && dbJobId) {
+        await admin.from('production_jobs').update({queue_job_id:job.id}).eq('id',dbJobId).eq('owner_id',req.userId);
+      }
+      res.status(202).json({jobId:job.id,dbJobId,status:'queued'});
     } finally { await queue.close(); }
   });
   return router;
