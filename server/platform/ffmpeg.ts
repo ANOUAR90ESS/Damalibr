@@ -15,6 +15,7 @@ export interface RenderOptions {
   fps?: number;
   scenes: RenderScene[];
   audioPath?: string;
+  subtitlePath?: string;
   onProgress?: (progress: number) => Promise<void> | void;
 }
 
@@ -43,9 +44,16 @@ export async function renderVideo(options: RenderOptions): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const args = [
         '-y', '-f', 'concat', '-safe', '0', '-i', concatFile,
-        '-vf', `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,format=yuv420p`,
+        '-vf', [
+          `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
+          `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
+          'format=yuv420p',
+          ...(options.subtitlePath ? [`subtitles='${options.subtitlePath.replace(/'/g, "'\\''")}'`] : []),
+        ].join(','),
         '-r', String(fps), '-c:v', 'libx264', '-preset', process.env.FFMPEG_PRESET || 'veryfast',
-        '-movflags', '+faststart', '-an', options.outputPath,
+        '-movflags', '+faststart',
+        ...(options.audioPath ? ['-i', options.audioPath, '-c:a', 'aac', '-b:a', '192k', '-shortest'] : ['-an']),
+        options.outputPath,
       ];
       const child = spawn(ffmpegPath(), args, { stdio: ['ignore', 'ignore', 'pipe'] });
       let stderr = '';
