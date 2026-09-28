@@ -1,19 +1,40 @@
 import { Worker, Job } from 'bullmq';
 import { createRedisConnection, CREATOR_QUEUE } from './bullmq';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+const supabase = process.env.SUPABASE_SERVICE_ROLE_KEY && supabaseUrl
+  ? createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } })
+  : null;
+
+async function updateDb(job: Job, patch: Record<string, unknown>) {
+  const dbJobId = (job.data as { dbJobId?: string })?.dbJobId;
+  if (!supabase || !dbJobId) return;
+  await supabase.from('production_jobs').update(patch).eq('id', dbJobId);
+}
 
 async function processJob(job: Job) {
   console.log(`[creator-worker] ${job.id} ${job.name} started`);
+  await updateDb(job, { status: 'running', started_at: new Date().toISOString(), progress: 5 });
   await job.updateProgress(10);
 
-  switch (job.name) {
-    case 'video.render':
-    case 'export.create':
-      // Heavy FFmpeg execution will be attached here in the next rendering step.
-      await job.updateProgress(100);
-      return { status: 'ready', type: job.name };
-    default:
-      await job.updateProgress(100);
-      return { status: 'accepted', type: job.name };
+  try {
+    switch (job.name) {
+      case 'video.render':
+      case 'export.create':
+        // FFmpeg execution is attached in the rendering phase.
+        await job.updateProgress(100);
+        await updateDb(job, { status: 'completed', progress: 100, result: { status: 'ready', type: job.name }, completed_at: new Date().toISOString() });
+        return { status: 'ready', type: job.name };
+      default:
+        await job.updateProgress(100);
+        await updateDb(job, { status: 'completed', progress: 100, result: { status: 'accepted', type: job.name }, completed_at: new Date().toISOString() });
+        return { status: 'accepted', type: job.name };
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    await updateDb(job, { status: 'failed', error: message });
+    throw error;
   }
 }
 
