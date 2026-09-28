@@ -14,7 +14,7 @@ const api=async(path:string, options:RequestInit={})=>{
 export const CreatorEpisodeScreen:React.FC=()=>{
  const {projectId,episodeId}=useParams();
  const [episode,setEpisode]=useState<any>(null),[script,setScript]=useState(''),[sceneTitle,setSceneTitle]=useState(''),[sceneScript,setSceneScript]=useState(''),[characterName,setCharacterName]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
- const [selectedAudio,setSelectedAudio]=useState(''),[selectedSubtitle,setSelectedSubtitle]=useState(''),[scenes,setScenes]=useState<any[]>([]),[sceneDurations,setSceneDurations]=useState<Record<string,number>>({}),[selectedImages,setSelectedImages]=useState<Record<string,string>>({}),[characters,setCharacters]=useState<any[]>([]),[media,setMedia]=useState<any[]>([]),[uploading,setUploading]=useState(false);
+ const [exportProfile,setExportProfile]=useState('youtube-1080p'),[selectedAudio,setSelectedAudio]=useState(''),[selectedSubtitle,setSelectedSubtitle]=useState(''),[scenes,setScenes]=useState<any[]>([]),[sceneDurations,setSceneDurations]=useState<Record<string,number>>({}),[selectedImages,setSelectedImages]=useState<Record<string,string>>({}),[characters,setCharacters]=useState<any[]>([]),[media,setMedia]=useState<any[]>([]),[uploading,setUploading]=useState(false);
  const load=async()=>{try{const [e,c,ch,m]=await Promise.all([api(`/api/creator/episodes/${episodeId}`),api(`/api/creator/episodes/${episodeId}/scenes`),api(`/api/creator/projects/${projectId}/characters`),api(`/api/creator/projects/${projectId}/media`)]);setEpisode(e.episode);setScript(e.episode.script?.text||'');setScenes(c.scenes||[]);setSceneDurations(Object.fromEntries((c.scenes||[]).map((s:any)=>[s.id,Number(s.metadata?.duration)||5])));setSelectedImages(Object.fromEntries((c.scenes||[]).map((s:any)=>[s.id,s.metadata?.imageStorageKey||''])));setSelectedAudio((c.episode?.metadata?.audioStorageKey)||'');setSelectedSubtitle((c.episode?.metadata?.subtitleStorageKey)||'');setCharacters(ch.characters||[]);setMedia(m.media||[])}catch(e){setError(e instanceof Error?e.message:'Error')}};
  useEffect(()=>{load()},[episodeId,projectId]);
  const save=async()=>{setBusy(true);try{await api(`/api/creator/episodes/${episodeId}`,{method:'PATCH',body:JSON.stringify({script:{text:script}})});setBusy(false)}catch(e){setError(e instanceof Error?e.message:'Error');setBusy(false)}};
@@ -31,7 +31,7 @@ export const CreatorEpisodeScreen:React.FC=()=>{
   setRendering(true);setError('');
   try{
    const renderScenes=scenes.map((s,i)=>({storageKey:selectedImages[s.id]||images[i%images.length].storage_key,duration:sceneDurations[s.id]||5}));
-   const j=await api('/api/jobs/render',{method:'POST',body:JSON.stringify({projectId,episodeId,profileId:'youtube-1080p',scenes:renderScenes,audioStorageKey:selectedAudio||undefined,subtitleStorageKey:selectedSubtitle||undefined})});
+   const j=await api('/api/jobs/render',{method:'POST',body:JSON.stringify({projectId,episodeId,profileId:exportProfile,scenes:renderScenes,audioStorageKey:selectedAudio||undefined,subtitleStorageKey:selectedSubtitle||undefined})});
    setRenderJob(j); pollJob(j.dbJobId);
   }catch(e){setError(e instanceof Error?e.message:'No se pudo iniciar el render');setRendering(false)}
  };
