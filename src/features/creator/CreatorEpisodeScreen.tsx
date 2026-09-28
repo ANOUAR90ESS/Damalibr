@@ -1,0 +1,89 @@
+import React, { useEffect, useState } from 'react';
+import { Link, useParams } from 'react-router-dom';
+import { ArrowLeft, Plus, Save, Users, Clapperboard, Image as ImageIcon, Upload, Loader2, ChevronUp, ChevronDown, Trash2 } from 'lucide-react';
+import { supabaseClient, getAccessToken } from '../../lib/supabaseClient';
+
+const api=async(path:string, options:RequestInit={})=>{
+ const token=await getAccessToken();
+ const res=await fetch(path,{...options,headers:{'Content-Type':'application/json',...(token?{Authorization:`Bearer ${token}`}:{})}});
+ const data=await res.json().catch(()=>({}));
+ if(!res.ok) throw new Error(data.error||'Error de servidor');
+ return data;
+};
+
+export const CreatorEpisodeScreen:React.FC=()=>{
+ const {projectId,episodeId}=useParams();
+ const [episode,setEpisode]=useState<any>(null),[script,setScript]=useState(''),[sceneTitle,setSceneTitle]=useState(''),[sceneScript,setSceneScript]=useState(''),[characterName,setCharacterName]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [rendering,setRendering]=useState(false),[renderJob,setRenderJob]=useState<any>(null),[exports,setExports]=useState<any[]>([]),[exportProfile,setExportProfile]=useState('youtube-1080p'),[selectedAudio,setSelectedAudio]=useState(''),[selectedSubtitle,setSelectedSubtitle]=useState(''),[scenes,setScenes]=useState<any[]>([]),[sceneDurations,setSceneDurations]=useState<Record<string,number>>({}),[selectedImages,setSelectedImages]=useState<Record<string,string>>({}),[characters,setCharacters]=useState<any[]>([]),[media,setMedia]=useState<any[]>([]),[uploading,setUploading]=useState(false),[mediaQuery,setMediaQuery]=useState(''),[mediaFilter,setMediaFilter]=useState('all');
+ const load=async()=>{try{const [e,c,ch,m,x]=await Promise.all([api(`/api/creator/episodes/${episodeId}`),api(`/api/creator/episodes/${episodeId}/scenes`),api(`/api/creator/projects/${projectId}/characters`),api(`/api/creator/projects/${projectId}/media`),api(`/api/jobs/exports?projectId=${projectId}`)]);setEpisode(e.episode);setScript(e.episode.script?.text||'');setScenes(c.scenes||[]);setSceneDurations(Object.fromEntries((c.scenes||[]).map((s:any)=>[s.id,Number(s.metadata?.duration)||5])));setSelectedImages(Object.fromEntries((c.scenes||[]).map((s:any)=>[s.id,s.metadata?.imageStorageKey||''])));setSelectedAudio((c.episode?.metadata?.audioStorageKey)||'');setSelectedSubtitle((c.episode?.metadata?.subtitleStorageKey)||'');setCharacters(ch.characters||[]);setMedia(m.media||[]);setExports(x.exports||[])}catch(e){setError(e instanceof Error?e.message:'Error')}};
+ useEffect(()=>{load()},[episodeId,projectId]);
+ const save=async()=>{setBusy(true);try{await api(`/api/creator/episodes/${episodeId}`,{method:'PATCH',body:JSON.stringify({script:{text:script}})});setBusy(false)}catch(e){setError(e instanceof Error?e.message:'Error');setBusy(false)}};
+ const addScene=async(e:React.FormEvent)=>{e.preventDefault();if(!sceneTitle)return;setBusy(true);try{await api(`/api/creator/episodes/${episodeId}/scenes`,{method:'POST',body:JSON.stringify({title:sceneTitle,script:sceneScript})});setSceneTitle('');setSceneScript('');await load()}catch(e){setError(e instanceof Error?e.message:'Error')}finally{setBusy(false)}};
+ const uploadFile=async(file:File)=>{if(!projectId)return;setUploading(true);setError('');try{const kind=file.type.startsWith('image/')?'image':file.type.startsWith('audio/')?'audio':file.type.startsWith('video/')?'video':'other';const prep=await api(`/api/creator/projects/${projectId}/media/upload-url`,{method:'POST',body:JSON.stringify({name:file.name,mime_type:file.type,kind})});if(!supabaseClient)throw new Error('Configura Supabase en el cliente para subir archivos.');const uploaded=await supabaseClient.storage.from('media').uploadToSignedUrl(prep.path,prep.token,file);if(uploaded.error)throw uploaded.error;await api(`/api/creator/projects/${projectId}/media`,{method:'POST',body:JSON.stringify({name:file.name,mime_type:file.type,kind,storage_key:prep.path,episode_id:episodeId,size_bytes:file.size})});await load()}catch(e){setError(e instanceof Error?e.message:'No se pudo subir el archivo')}finally{setUploading(false)}};
+ const [draggedScene,setDraggedScene]=useState<number|null>(null);
+ const reorderScenes=async(from:number,to:number)=>{
+  if(from===to||from<0||to<0||from>=scenes.length||to>=scenes.length)return;
+  const ordered=[...scenes];const [moved]=ordered.splice(from,1);ordered.splice(to,0,moved);
+  try{
+   await Promise.all(ordered.map((s,i)=>api('/api/creator/scenes/'+s.id,{method:'PATCH',body:JSON.stringify({scene_order:i+1})})));
+   setScenes(ordered.map((s,i)=>({...s,scene_order:i+1})));setDraggedScene(null);
+  }catch(e){setError(e instanceof Error?e.message:'No se pudo reordenar las escenas');}
+ };
+ const moveScene=async(index:number,direction:-1|1)=>{
+  const target=index+direction;
+  if(target<0||target>=scenes.length)return;
+  const a=scenes[index],b=scenes[target];
+  try{
+   await Promise.all([
+    api('/api/creator/scenes/'+a.id,{method:'PATCH',body:JSON.stringify({scene_order:b.scene_order})}),
+    api('/api/creator/scenes/'+b.id,{method:'PATCH',body:JSON.stringify({scene_order:a.scene_order})})
+   ]);
+   setScenes(v=>{const n=[...v];[n[index],n[target]]=[n[target],n[index]];return n;});
+  }catch(e){setError(e instanceof Error?e.message:'No se pudo reordenar las escenas');}
+ };
+ const updateSceneMeta=async(scene:any, patch:any)=>{
+  try{await api('/api/creator/scenes/'+scene.id,{method:'PATCH',body:JSON.stringify({metadata:{...(scene.metadata||{}),...patch}})});setScenes(v=>v.map(x=>x.id===scene.id?{...x,metadata:{...(x.metadata||{}),...patch}}):x));}catch(e){setError(e instanceof Error?e.message:'No se pudo guardar la escena');}
+ };
+ const filteredMedia=media.filter(m=>(mediaFilter==='all'||m.kind===mediaFilter)&&m.name.toLowerCase().includes(mediaQuery.toLowerCase()));
+ const mediaUrl=(m:any)=>'/api/media?key='+encodeURIComponent(m.storage_key);
+ const deleteMedia=async(m:any)=>{
+  if(!window.confirm('¿Eliminar "'+m.name+'"? Esta acción no se puede deshacer.'))return;
+  try{await api('/api/creator/media/'+m.id,{method:'DELETE'});await load();}catch(e){setError(e instanceof Error?e.message:'No se pudo eliminar el recurso');}
+ };
+ const saveEpisodeMedia=async(kind:string,value:string)=>{try{const patch=kind==='audio'?{audioStorageKey:value}:{subtitleStorageKey:value};await api('/api/creator/episodes/'+episodeId,{method:'PATCH',body:JSON.stringify({metadata:{...(episode?.metadata||{}),...patch}})});setEpisode((e:any)=>e?{...e,metadata:{...(e.metadata||{}),...patch}}:e);}catch(e){setError(e instanceof Error?e.message:'No se pudo guardar el recurso');}};
+ const startRender=async()=>{
+  if(!projectId||!episodeId||!scenes.length)return;
+  if(scenes.some(s=>!selectedImages[s.id])){setError('Asigna una imagen a cada escena antes de renderizar.');return;}
+  setRendering(true);setError('');
+  try{
+   const j=await api('/api/jobs/render',{method:'POST',body:JSON.stringify({projectId,episodeId,profileId:exportProfile})});
+   setRenderJob(j); pollJob(j.dbJobId);
+  }catch(e){setError(e instanceof Error?e.message:'No se pudo iniciar el render');setRendering(false)}
+ };
+ const pollJob=async(id:string)=>{
+  try{
+   const j=await api('/api/jobs/'+id);setRenderJob(j);
+   if(j.status==='completed'||j.status==='failed'||j.status==='cancelled'){setRendering(false);await load();return;}
+   setTimeout(()=>pollJob(id),2000);
+  }catch(e){setError(e instanceof Error?e.message:'Error consultando render');setRendering(false)}
+ };
+ const addCharacter=async(e:React.FormEvent)=>{e.preventDefault();if(!characterName)return;setBusy(true);try{await api(`/api/creator/projects/${projectId}/characters`,{method:'POST',body:JSON.stringify({name:characterName})});setCharacterName('');await load()}catch(e){setError(e instanceof Error?e.message:'Error')}finally{setBusy(false)}};
+ return <div className="min-h-screen bg-[#090a0f] text-slate-100 pb-24"><div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+  <Link to={`/studio/project/${projectId}`} className="inline-flex items-center gap-2 text-xs text-slate-400"><ArrowLeft className="w-4 h-4"/>Proyecto</Link>
+  {error&&<div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300">{error}</div>}
+  {episode&&<><div><p className="text-amber-400 text-xs font-bold uppercase">Episodio</p><h1 className="text-3xl font-black">{episode.title}</h1></div>
+  <section className="grid lg:grid-cols-2 gap-5">
+   <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-3"><div className="flex items-center justify-between"><h2 className="font-bold flex gap-2 items-center"><Save className="w-4 h-4"/>Guion</h2><button onClick={save} disabled={busy} className="px-3 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-sm">Guardar</button></div><textarea value={script} onChange={e=>setScript(e.target.value)} rows={14} placeholder="Escribe el guion del episodio..." className="w-full p-4 rounded-2xl bg-slate-950 border border-slate-800 outline-none"/></div>
+   <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-4"><h2 className="font-bold flex gap-2 items-center"><Clapperboard className="w-4 h-4"/>Escenas</h2><form onSubmit={addScene} className="space-y-2"><input value={sceneTitle} onChange={e=>setSceneTitle(e.target.value)} placeholder="Título de escena" className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800"/><textarea value={sceneScript} onChange={e=>setSceneScript(e.target.value)} placeholder="Texto / acción de la escena" rows={4} className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800"/><button disabled={busy} className="px-4 py-2 rounded-xl bg-slate-100 text-slate-950 font-bold flex gap-2 items-center"><Plus className="w-4 h-4"/>Añadir escena</button></form><div className="space-y-2">{scenes.map((s,i)=><div key={s.id} className="p-3 rounded-xl bg-slate-950 space-y-2"><div className="flex justify-between gap-2"><div><b>{i+1}. {s.title}</b><span className="text-xs text-slate-500 ml-2">{sceneDurations[s.id]||5}s</span></div><div className="flex gap-1"><button type="button" title="Subir" disabled={i===0} onClick={()=>moveScene(i,-1)} className="p-1 rounded-lg bg-slate-900 disabled:opacity-30"><ChevronUp className="w-4 h-4"/></button><button type="button" title="Bajar" disabled={i===scenes.length-1} onClick={()=>moveScene(i,1)} className="p-1 rounded-lg bg-slate-900 disabled:opacity-30"><ChevronDown className="w-4 h-4"/></button></div></div><p className="text-xs text-slate-400">{s.script?.text||''}</p><div className="grid grid-cols-2 gap-2"><label className="text-xs text-slate-400">Imagen<select value={selectedImages[s.id]||''} onChange={e=>{const v=e.target.value;setSelectedImages(x=>({...x,[s.id]:v}));updateSceneMeta(s,{imageStorageKey:v})}} className="mt-1 w-full p-2 rounded-lg bg-slate-900 border border-slate-800"><option value="">Automática</option>{media.filter(m=>m.kind==='image').map(m=><option key={m.id} value={m.storage_key}>{m.name}</option>)}</select></label><label className="text-xs text-slate-400">Duración<input type="number" min="0.5" max="300" step="0.5" value={sceneDurations[s.id]||5} onChange={e=>{const v=Math.max(.5,Math.min(300,Number(e.target.value)||5));setSceneDurations(x=>({...x,[s.id]:v}))}} onBlur={()=>updateSceneMeta(s,{duration:sceneDurations[s.id]||5})} className="mt-1 w-full p-2 rounded-lg bg-slate-900 border border-slate-800"/></label></div></div>)}</div></div>
+  </section>
+  <section className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-4"><div className="flex items-center justify-between"><div><h2 className="font-bold">Timeline</h2><p className="text-xs text-slate-500">Orden de escenas y duración del episodio.</p></div><span className="text-xs text-slate-500">{scenes.reduce((n,s)=>n+(sceneDurations[s.id]||5),0).toFixed(1)} s</span></div><div className="flex gap-2 overflow-x-auto pb-2">{scenes.map((s,i)=><div key={s.id} draggable onDragStart={()=>setDraggedScene(i)} onDragOver={e=>e.preventDefault()} onDrop={()=>{if(draggedScene!==null)reorderScenes(draggedScene,i)}} className="min-w-[150px] p-3 rounded-2xl bg-slate-950 border border-slate-800 cursor-grab"><div className="text-xs text-amber-400 font-bold">#{i+1}</div><div className="mt-1 font-semibold truncate">{s.title}</div><div className="text-xs text-slate-500 mt-1">{sceneDurations[s.id]||5}s</div></div>)}</div></section>
+  <section className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-4"><div className="flex items-center justify-between"><div><h2 className="font-bold">Export Studio</h2><p className="text-xs text-slate-500">Genera una versión independiente para cada formato.</p></div><select value={exportProfile} onChange={e=>setExportProfile(e.target.value)} className="p-2 rounded-xl bg-slate-950 border border-slate-800 text-sm"><option value="youtube-1080p">YouTube · 16:9 · 1080p</option><option value="vertical-1080p">Shorts/Reels/TikTok · 9:16 · 1080p</option><option value="square-1080p">Square · 1:1 · 1080p</option></select></div>{exports.length>0&&<div className="space-y-2">{exports.slice(0,10).map((x:any)=><div key={x.id} className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800"><span className="text-xs">{x.profile_id} · {x.status}</span>{x.status==='ready'&&<a className="text-xs text-amber-400" href={`/api/jobs/exports/${x.id}/download`} target="_blank" rel="noreferrer">Descargar</a>}</div>)}</div>}</section>
+  <section className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-4"><h2 className="font-bold flex gap-2 items-center"><Users className="w-4 h-4"/>Personajes</h2><form onSubmit={addCharacter} className="flex gap-2"><input value={characterName} onChange={e=>setCharacterName(e.target.value)} placeholder="Nombre del personaje" className="flex-1 p-3 rounded-xl bg-slate-950 border border-slate-800"/><button disabled={busy} className="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold"><Plus className="w-4 h-4"/></button></form><div className="grid sm:grid-cols-3 gap-3">{characters.map(c=><div key={c.id} className="p-4 rounded-xl bg-slate-950"><b>{c.name}</b><p className="text-xs text-slate-400 mt-1">{c.description||'Sin descripción'}</p></div>)}</div></section>
+  <section className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-4">
+   <div className="flex items-center justify-between gap-4"><div><h2 className="font-bold flex gap-2 items-center"><Clapperboard className="w-4 h-4"/>Render de vídeo</h2><p className="text-xs text-slate-500 mt-1">Cada escena usa una imagen de la biblioteca · 5 s por escena.</p></div><button onClick={startRender} disabled={rendering||!scenes.length} className="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-sm">{rendering?'Renderizando...':'Renderizar MP4'}</button></div>
+   {renderJob&&<div className="p-4 rounded-2xl bg-slate-950 border border-slate-800"><div className="flex justify-between text-xs mb-2"><span>Estado: {renderJob.status}</span><span>{renderJob.progress||0}%</span></div><div className="h-2 rounded-full bg-slate-800 overflow-hidden"><div className="h-full bg-amber-500" style={{width:`${renderJob.progress||0}%`}}/></div>{renderJob.error&&<p className="text-rose-300 text-xs mt-2">{renderJob.error}</p>}</div>}
+  </section>
+  <section className="p-5 rounded-3xl bg-slate-900 border border-slate-800 space-y-4"><div className="flex items-center justify-between"><h2 className="font-bold flex gap-2 items-center"><ImageIcon className="w-4 h-4"/>Biblioteca multimedia</h2><label className="cursor-pointer px-4 py-2 rounded-xl bg-amber-500 text-slate-950 font-bold text-sm flex gap-2 items-center">{uploading?<Loader2 className="w-4 h-4 animate-spin"/>:<Upload className="w-4 h-4"/>}{uploading?'Subiendo...':'Subir archivo'}<input type="file" className="hidden" disabled={uploading} onChange={e=>{const f=e.target.files?.[0];if(f)uploadFile(f);e.currentTarget.value=''}}/></label></div><div className="flex flex-wrap gap-2"><input value={mediaQuery} onChange={e=>setMediaQuery(e.target.value)} placeholder="Buscar recursos..." className="flex-1 min-w-[180px] p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-sm"/>{["all","image","audio","video","subtitle"].map(k=><button type="button" key={k} onClick={()=>setMediaFilter(k)} className="px-3 py-2 rounded-xl text-xs font-bold bg-slate-950 border border-slate-800">{k==="all"?"Todos":k}</button>)}</div><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">{filteredMedia.map(m=><div key={m.id} className="p-4 rounded-xl bg-slate-950 border border-slate-800">{m.kind==="image"&&<img src={mediaUrl(m)} alt="" className="w-full h-32 object-cover rounded-lg mb-2"/>}{m.kind==="video"&&<video src={mediaUrl(m)} controls className="w-full h-32 object-cover rounded-lg mb-2"/>}{m.kind==="audio"&&<audio src={mediaUrl(m)} controls className="w-full mb-2"/>}<p className="font-semibold truncate">{m.name}</p><p className="text-xs text-slate-500 mt-1">{m.kind} · {m.status}</p><div className="flex items-center justify-between gap-2"><a className="text-xs text-amber-400 mt-2 inline-block" href={mediaUrl(m)} target="_blank" rel="noreferrer">Abrir</a><button type="button" onClick={()=>deleteMedia(m)} className="p-2 rounded-lg text-rose-300 hover:bg-rose-500/10" title="Eliminar"><Trash2 className="w-4 h-4"/></button></div></div>)}</div></section>
+  </>}
+ </div></div>;
+};

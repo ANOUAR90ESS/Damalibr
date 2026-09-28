@@ -1,0 +1,216 @@
+import crypto from 'crypto';
+import express, { type NextFunction, type Request, type Response } from 'express';
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+interface AuthRequest extends Request { userId?: string; }
+
+function requireUser(admin: SupabaseClient | null, production: boolean) {
+  return async (req: AuthRequest, res: Response, next: NextFunction) => {
+    if (!admin) {
+      if (production) return res.status(503).json({ error: 'Creator Studio requiere Supabase.' });
+      req.userId = 'local-dev';
+      return next();
+    }
+    const token = req.get('authorization')?.replace(/^Bearer\s+/i, '');
+    if (!token) return res.status(401).json({ error: 'Inicia sesión para usar Creator Studio.' });
+    const { data, error } = await admin.auth.getUser(token);
+    if (error || !data.user) return res.status(401).json({ error: 'Sesión no válida.' });
+    req.userId = data.user.id;
+    next();
+  };
+}
+
+const clean = (v: unknown, max: number) =>
+  typeof v === 'string' && v.trim() && v.length <= max ? v.trim() : null;
+
+export function createCreatorRouter(admin: SupabaseClient | null, production: boolean) {
+  const router = express.Router();
+  router.use(express.json({ limit: '100kb' }));
+  router.use(requireUser(admin, production));
+
+  router.get('/projects', async (req: AuthRequest, res) => {
+    if (!admin) return res.json({ projects: [] });
+    const { data, error } = await admin.from('creator_projects')
+      .select('*').eq('owner_id', req.userId).order('updated_at', { ascending: false });
+    if (error) return res.status(500).json({ error: 'No se pudieron cargar los proyectos.' });
+    res.json({ projects: data || [] });
+  });
+
+  router.post('/projects', async (req: AuthRequest, res) => {
+    const title = clean(req.body?.title, 200);
+    const type = clean(req.body?.type, 40) || 'story';
+    const language = clean(req.body?.language, 20) || 'es';
+    const description = clean(req.body?.description, 2000);
+    const allowed = ['story','book','series','short_film','microdrama','audiobook'];
+    if (!title) return res.status(400).json({ error: 'El título es obligatorio.' });
+    if (!allowed.includes(type)) return res.status(400).json({ error: 'Tipo de proyecto inválido.' });
+    if (!admin) return res.status(201).json({ project: { id: crypto.randomUUID(), owner_id: req.userId, title, type, language, description, status: 'draft' } });
+    const { data, error } = await admin.from('creator_projects')
+      .insert({ owner_id: req.userId, title, type, language, description, status: 'draft', metadata: {} })
+      .select('*').single();
+    if (error) return res.status(500).json({ error: 'No se pudo crear el proyecto.' });
+    res.status(201).json({ project: data });
+  });
+
+  router.get('/projects/:projectId', async (req: AuthRequest, res) => {
+    if (!admin) return res.status(404).json({ error: 'Proyecto no encontrado.' });
+    const { data, error } = await admin.from('creator_projects')
+      .select('*, creator_episodes(*)').eq('id', req.params.projectId).eq('owner_id', req.userId).single();
+    if (error || !data) return res.status(404).json({ error: 'Proyecto no encontrado.' });
+    res.json({ project: data });
+  });
+
+  router.post('/projects/:projectId/episodes', async (req: AuthRequest, res) => {
+    const title = clean(req.body?.title, 200);
+    const description = clean(req.body?.description, 2000);
+    if (!title) return res.status(400).json({ error: 'El título del episodio es obligatorio.' });
+    if (!admin) return res.status(201).json({ episode: { id: crypto.randomUUID(), title, status: 'draft' } });
+    const { data: project } = await admin.from('creator_projects').select('id').eq('id', req.params.projectId).eq('owner_id', req.userId).single();
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado.' });
+    const { data, error } = await admin.from('creator_episodes')
+      .insert({ project_id: project.id, owner_id: req.userId, title, description, status: 'draft', metadata: {} })
+      .select('*').single();
+    if (error) return res.status(500).json({ error: 'No se pudo crear el episodio.' });
+    res.status(201).json({ episode: data });
+  });
+
+
+  router.get('/projects/:projectId/characters', async (req: AuthRequest, res) => {
+    if (!admin) return res.json({ characters: [] });
+    const { data, error } = await admin.from('creator_characters').select('*').eq('project_id', req.params.projectId).eq('owner_id', req.userId).order('created_at');
+    if (error) return res.status(500).json({ error: 'No se pudieron cargar los personajes.' });
+    res.json({ characters: data || [] });
+  });
+
+  router.post('/projects/:projectId/characters', async (req: AuthRequest, res) => {
+    const name = clean(req.body?.name, 160);
+    if (!name) return res.status(400).json({ error: 'El nombre del personaje es obligatorio.' });
+    if (!admin) return res.status(201).json({ character: { id: crypto.randomUUID(), name } });
+    const { data: project } = await admin.from('creator_projects').select('id').eq('id', req.params.projectId).eq('owner_id', req.userId).single();
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado.' });
+    const { data, error } = await admin.from('creator_characters').insert({
+      project_id: project.id, owner_id: req.userId, name,
+      description: clean(req.body?.description, 2000), personality: clean(req.body?.personality, 2000), metadata: {}
+    }).select('*').single();
+    if (error) return res.status(500).json({ error: 'No se pudo crear el personaje.' });
+    res.status(201).json({ character: data });
+  });
+
+  router.get('/episodes/:episodeId', async (req: AuthRequest, res) => {
+    if (!admin) return res.status(404).json({ error: 'Episodio no encontrado.' });
+    const { data, error } = await admin.from('creator_episodes').select('*, creator_scenes(*)').eq('id', req.params.episodeId).eq('owner_id', req.userId).single();
+    if (error || !data) return res.status(404).json({ error: 'Episodio no encontrado.' });
+    res.json({ episode: data });
+  });
+
+  router.patch('/episodes/:episodeId', async (req: AuthRequest, res) => {
+    if (!admin) return res.status(404).json({ error: 'Episodio no encontrado.' });
+    const patch: Record<string, unknown> = {};
+    if (typeof req.body?.title === 'string') patch.title = clean(req.body.title, 200);
+    if (typeof req.body?.description === 'string') patch.description = clean(req.body.description, 2000);
+    if (req.body?.script !== undefined) patch.script = req.body.script;
+    if (req.body?.metadata && typeof req.body.metadata === 'object') {
+      const { data: existing } = await admin.from('creator_episodes').select('metadata').eq('id', req.params.episodeId).eq('owner_id', req.userId).single();
+      patch.metadata = { ...(existing?.metadata || {}), ...req.body.metadata };
+    }
+    const { data, error } = await admin.from('creator_episodes').update(patch).eq('id', req.params.episodeId).eq('owner_id', req.userId).select('*').single();
+    if (error || !data) return res.status(404).json({ error: 'No se pudo actualizar el episodio.' });
+    res.json({ episode: data });
+  });
+
+  router.get('/episodes/:episodeId/scenes', async (req: AuthRequest, res) => {
+    if (!admin) return res.json({ scenes: [] });
+    const { data, error } = await admin.from('creator_scenes').select('*').eq('episode_id', req.params.episodeId).eq('owner_id', req.userId).order('scene_order');
+    if (error) return res.status(500).json({ error: 'No se pudieron cargar las escenas.' });
+    res.json({ scenes: data || [] });
+  });
+
+  router.post('/episodes/:episodeId/scenes', async (req: AuthRequest, res) => {
+    const title = clean(req.body?.title, 200);
+    if (!title) return res.status(400).json({ error: 'El título de la escena es obligatorio.' });
+    if (!admin) return res.status(201).json({ scene: { id: crypto.randomUUID(), title, scene_order: 1, script: { text: req.body?.script || '' } } });
+    const { data: episode } = await admin.from('creator_episodes').select('id').eq('id', req.params.episodeId).eq('owner_id', req.userId).single();
+    if (!episode) return res.status(404).json({ error: 'Episodio no encontrado.' });
+    const { count } = await admin.from('creator_scenes').select('id', { count: 'exact', head: true }).eq('episode_id', episode.id).eq('owner_id', req.userId);
+    const { data, error } = await admin.from('creator_scenes').insert({
+      episode_id: episode.id, owner_id: req.userId, title, scene_order: (count || 0) + 1,
+      script: { text: typeof req.body?.script === 'string' ? req.body.script : '' }, metadata: {}
+    }).select('*').single();
+    if (error) return res.status(500).json({ error: 'No se pudo crear la escena.' });
+    res.status(201).json({ scene: data });
+  });
+
+  router.patch('/scenes/:sceneId', async (req: AuthRequest, res) => {
+    if (!admin) return res.json({ scene: { id: req.params.sceneId, ...(req.body || {}) } });
+    const { data: existing } = await admin.from('creator_scenes').select('*').eq('id', req.params.sceneId).eq('owner_id', req.userId).single();
+    if (!existing) return res.status(404).json({ error: 'Escena no encontrada.' });
+    const patch: Record<string, unknown> = {};
+    if (typeof req.body?.title === 'string') patch.title = clean(req.body.title, 200);
+    if (req.body?.script && typeof req.body.script === 'object') patch.script = req.body.script;
+    if (req.body?.metadata && typeof req.body.metadata === 'object') patch.metadata = { ...(existing.metadata || {}), ...req.body.metadata };
+    if (Number.isInteger(req.body?.scene_order) && req.body.scene_order > 0) patch.scene_order = req.body.scene_order;
+    const { data, error } = await admin.from('creator_scenes').update(patch).eq('id', existing.id).eq('owner_id', req.userId).select('*').single();
+    if (error || !data) return res.status(500).json({ error: 'No se pudo actualizar la escena.' });
+    res.json({ scene: data });
+  });
+
+  router.delete('/media/:mediaId', async (req: AuthRequest, res) => {
+    if (!admin) return res.status(404).json({ error: 'Medio no encontrado.' });
+    const { data: media } = await admin.from('creator_media').select('*').eq('id', req.params.mediaId).eq('owner_id', req.userId).single();
+    if (!media) return res.status(404).json({ error: 'Medio no encontrado.' });
+    const { error: storageError } = await admin.storage.from('media').remove([media.storage_key]);
+    if (storageError) return res.status(500).json({ error: 'No se pudo eliminar el archivo.' });
+    const { error } = await admin.from('creator_media').delete().eq('id', media.id).eq('owner_id', req.userId);
+    if (error) return res.status(500).json({ error: 'No se pudo eliminar el recurso.' });
+    res.status(204).send();
+  });
+
+  router.get('/projects/:projectId/media', async (req: AuthRequest, res) => {
+    if (!admin) return res.json({ media: [] });
+    const { data, error } = await admin.from('creator_media').select('*').eq('project_id', req.params.projectId).eq('owner_id', req.userId).order('created_at', { ascending: false });
+    if (error) return res.status(500).json({ error: 'No se pudo cargar la biblioteca multimedia.' });
+    res.json({ media: data || [] });
+  });
+
+
+  router.post('/projects/:projectId/media/upload-url', async (req: AuthRequest, res) => {
+    const name = clean(req.body?.name, 255);
+    const mimeType = clean(req.body?.mime_type, 120) || 'application/octet-stream';
+    const kind = clean(req.body?.kind, 30) || 'other';
+    if (!name) return res.status(400).json({ error: 'El nombre del archivo es obligatorio.' });
+    if (!['image','audio','video','subtitle','thumbnail','other'].includes(kind)) return res.status(400).json({ error: 'Tipo multimedia inválido.' });
+    if (!admin) return res.status(503).json({ error: 'La subida requiere Supabase Storage.' });
+
+    const { data: project } = await admin.from('creator_projects').select('id')
+      .eq('id', req.params.projectId).eq('owner_id', req.userId).single();
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado.' });
+
+    const extension = name.includes('.') ? name.split('.').pop()!.toLowerCase().replace(/[^a-z0-9]/g, '') : 'bin';
+    const storageKey = `projects/${project.id}/${kind}/${crypto.randomUUID()}.${extension || 'bin'}`;
+    const { data, error } = await admin.storage.from('media').createSignedUploadUrl(storageKey);
+    if (error || !data) return res.status(500).json({ error: 'No se pudo preparar la subida.' });
+
+    res.json({ path: storageKey, token: data.token, mime_type: mimeType, name });
+  });
+
+  router.post('/projects/:projectId/media', async (req: AuthRequest, res) => {
+    const name = clean(req.body?.name, 255);
+    const kind = clean(req.body?.kind, 30) || 'other';
+    const storageKey = clean(req.body?.storage_key, 500);
+    if (!name || !storageKey) return res.status(400).json({ error: 'Nombre y storage_key son obligatorios.' });
+    if (!['image','audio','video','subtitle','thumbnail','other'].includes(kind)) return res.status(400).json({ error: 'Tipo multimedia inválido.' });
+    if (!admin) return res.status(201).json({ media: { id: crypto.randomUUID(), name, kind, storage_key: storageKey, status: 'ready' } });
+    const { data: project } = await admin.from('creator_projects').select('id').eq('id', req.params.projectId).eq('owner_id', req.userId).single();
+    if (!project || !storageKey.startsWith(`projects/${project.id}/`)) return res.status(404).json({ error: 'Proyecto no encontrado.' });
+    const { data, error } = await admin.from('creator_media').insert({
+      owner_id: req.userId, project_id: project.id, episode_id: req.body?.episode_id || null,
+      name, kind, storage_key: storageKey, mime_type: clean(req.body?.mime_type, 120),
+      size_bytes: typeof req.body?.size_bytes === 'number' ? req.body.size_bytes : null,
+      metadata: req.body?.metadata || {}, status: 'ready'
+    }).select('*').single();
+    if (error) return res.status(500).json({ error: 'No se pudo registrar el recurso multimedia.' });
+    res.status(201).json({ media: data });
+  });
+
+  return router;
+}

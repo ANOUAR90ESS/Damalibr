@@ -12,6 +12,9 @@ import { LocalMediaStore, SupabaseMediaStore } from './server/pipeline/media';
 import { MemoryJobStore, SupabaseJobStore } from './server/pipeline/jobs';
 import { PipelineService } from './server/pipeline/service';
 import { createPipelineRouter, requireAdmin } from './server/pipeline/router';
+import { createMediaRouter } from './server/mediaRouter';
+import { createCreatorRouter } from './server/creatorRouter';
+import { createJobRouter } from './server/jobRouter';
 
 dotenv.config();
 
@@ -44,12 +47,22 @@ if (!paymentsDeps) {
 app.use('/api/checkout', createRateLimiter({ windowMs: 60_000, max: 10 }));
 app.use('/api', createPaymentsRouter(paymentsDeps, process.env.STRIPE_WEBHOOK_SECRET));
 
-// AI production pipeline (admins only). Without a Gemini key it runs in simulated mode;
-// without Supabase it keeps jobs in memory and media on local disk (served at /media).
+// Protected media gateway. In Supabase mode it issues a 2-minute signed URL.
+// In local development it reads from MEDIA_DIR. The legacy /media static route
+// is intentionally not exposed when Supabase is configured.
 const localMediaDir = process.env.MEDIA_DIR || path.join(__dirname, 'data', 'media');
+const mediaStore = supabaseAdmin
+  ? new SupabaseMediaStore(supabaseAdmin)
+  : new LocalMediaStore(localMediaDir);
+app.use('/api/media', createMediaRouter(mediaStore, supabaseAdmin, isProduction));
+app.use('/api/creator', createCreatorRouter(supabaseAdmin, isProduction));
+app.use('/api/jobs', createJobRouter(supabaseAdmin, isProduction));
+
+// AI production pipeline (admins only). Without a Gemini key it runs in simulated mode;
+// without Supabase it keeps jobs in memory and media on local disk.
 const pipeline = new PipelineService({
   store: supabaseAdmin ? new SupabaseJobStore(supabaseAdmin) : new MemoryJobStore(),
-  media: supabaseAdmin ? new SupabaseMediaStore(supabaseAdmin) : new LocalMediaStore(localMediaDir),
+  media: mediaStore,
   ai: hasGeminiKey()
     ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, httpOptions: { headers: { 'User-Agent': 'aistudio-build' } } })
     : null,
@@ -57,21 +70,17 @@ const pipeline = new PipelineService({
   ffmpeg: process.env.FFMPEG_PATH,
 });
 if (pipeline.simulated) console.warn('Estudio IA en modo simulado: falta GEMINI_API_KEY.');
-if (!supabaseAdmin) app.use('/media', express.static(localMediaDir, { fallthrough: false }));
 
-// Rate-limit pipeline actions (job polling with GET is not limited).
 const pipelineLimiter = createRateLimiter({ windowMs: 60_000, max: 30 });
 app.use('/api/pipeline', (req, res, next) => (req.method === 'GET' ? next() : pipelineLimiter(req, res, next)));
 app.use('/api/pipeline', createPipelineRouter(pipeline, requireAdmin(supabaseAdmin, isProduction)));
 
 app.use(express.json({ limit: '1mb' }));
 
-// API: Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', app: 'Lámina', timestamp: new Date().toISOString() });
 });
 
-// Setup Vite in Dev or Serve Static in Prod
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
