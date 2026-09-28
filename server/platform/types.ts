@@ -59,3 +59,5 @@ export const EXPORT_PROFILES: ExportProfile[] = [
   { id: 'vertical-1080p', label: 'Shorts / Reels / TikTok', width: 1080, height: 1920, videoCodec: 'h264', audioCodec: 'aac', container: 'mp4', maxFps: 60 },
   { id: 'square-1080p', label: 'Square 1080p', width: 1080, height: 1080, videoCodec: 'h264', audioCodec: 'aac', container: 'mp4', maxFps: 60 },
 ];
+
+export interface CreatorExport { id:string; ownerId:string; projectId:string; episodeId?:string; jobId:string; profileId:string; storageKey:string; status:'queued'|'processing'|'ready'|'failed'; createdAt:string; metadata:Record<string,unknown>; }
