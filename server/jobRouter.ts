@@ -56,7 +56,7 @@ export function createJobRouter(admin: SupabaseClient|null, production: boolean)
   });
   router.post('/render', async (req:AuthRequest,res:Response)=>{
     if(!admin) return res.status(503).json({error:'El render requiere Supabase.'});
-    const { projectId, episodeId, profileId, scenes } = req.body || {};
+    const { projectId, episodeId, profileId, scenes, audioStorageKey, subtitleStorageKey } = req.body || {};
     if(typeof projectId !== 'string' || !Array.isArray(scenes) || scenes.length === 0)
       return res.status(400).json({error:'projectId y scenes son obligatorios.'});
     const {data:project}=await admin.from('creator_projects').select('id').eq('id',projectId).eq('owner_id',req.userId).single();
@@ -71,6 +71,8 @@ export function createJobRouter(admin: SupabaseClient|null, production: boolean)
     const queue=new BullMQProductionQueue();
     try {
       const payload={projectId,episodeId,profileId:typeof profileId==='string'?profileId:'youtube-1080p',
+        audioStorageKey:typeof audioStorageKey==='string'?audioStorageKey:null,
+        subtitleStorageKey:typeof subtitleStorageKey==='string'?subtitleStorageKey:null,
         scenes:scenes.map((s:any)=>({storageKey:s.storageKey,duration:Math.max(0.5,Math.min(300,Number(s.duration)||5))))};
       const {data:created,error}=await admin.from('production_jobs').insert({
         owner_id:req.userId,project_id:projectId,episode_id:episodeId||null,type:'video.render',status:'queued',payload,progress:0
