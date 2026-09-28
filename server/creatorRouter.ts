@@ -143,5 +143,45 @@ export function createCreatorRouter(admin: SupabaseClient | null, production: bo
     res.json({ media: data || [] });
   });
 
+
+  router.post('/projects/:projectId/media/upload-url', async (req: AuthRequest, res) => {
+    const name = clean(req.body?.name, 255);
+    const mimeType = clean(req.body?.mime_type, 120) || 'application/octet-stream';
+    const kind = clean(req.body?.kind, 30) || 'other';
+    if (!name) return res.status(400).json({ error: 'El nombre del archivo es obligatorio.' });
+    if (!['image','audio','video','subtitle','thumbnail','other'].includes(kind)) return res.status(400).json({ error: 'Tipo multimedia inválido.' });
+    if (!admin) return res.status(503).json({ error: 'La subida requiere Supabase Storage.' });
+
+    const { data: project } = await admin.from('creator_projects').select('id')
+      .eq('id', req.params.projectId).eq('owner_id', req.userId).single();
+    if (!project) return res.status(404).json({ error: 'Proyecto no encontrado.' });
+
+    const extension = name.includes('.') ? name.split('.').pop()!.toLowerCase().replace(/[^a-z0-9]/g, '') : 'bin';
+    const storageKey = `projects/${project.id}/${kind}/${crypto.randomUUID()}.${extension || 'bin'}`;
+    const { data, error } = await admin.storage.from('media').createSignedUploadUrl(storageKey);
+    if (error || !data) return res.status(500).json({ error: 'No se pudo preparar la subida.' });
+
+    res.json({ path: storageKey, token: data.token, mime_type: mimeType, name });
+  });
+
+  router.post('/projects/:projectId/media', async (req: AuthRequest, res) => {
+    const name = clean(req.body?.name, 255);
+    const kind = clean(req.body?.kind, 30) || 'other';
+    const storageKey = clean(req.body?.storage_key, 500);
+    if (!name || !storageKey) return res.status(400).json({ error: 'Nombre y storage_key son obligatorios.' });
+    if (!['image','audio','video','subtitle','thumbnail','other'].includes(kind)) return res.status(400).json({ error: 'Tipo multimedia inválido.' });
+    if (!admin) return res.status(201).json({ media: { id: crypto.randomUUID(), name, kind, storage_key: storageKey, status: 'ready' } });
+    const { data: project } = await admin.from('creator_projects').select('id').eq('id', req.params.projectId).eq('owner_id', req.userId).single();
+    if (!project || !storageKey.startsWith(`projects/${project.id}/`)) return res.status(404).json({ error: 'Proyecto no encontrado.' });
+    const { data, error } = await admin.from('creator_media').insert({
+      owner_id: req.userId, project_id: project.id, episode_id: req.body?.episode_id || null,
+      name, kind, storage_key: storageKey, mime_type: clean(req.body?.mime_type, 120),
+      size_bytes: typeof req.body?.size_bytes === 'number' ? req.body.size_bytes : null,
+      metadata: req.body?.metadata || {}, status: 'ready'
+    }).select('*').single();
+    if (error) return res.status(500).json({ error: 'No se pudo registrar el recurso multimedia.' });
+    res.status(201).json({ media: data });
+  });
+
   return router;
 }
