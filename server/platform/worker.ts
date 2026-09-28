@@ -20,7 +20,7 @@ async function updateDb(job: Job, patch: Record<string, unknown>) {
 async function render(job: Job) {
   if (!supabase) throw new Error('Supabase es obligatorio para renderizar medios en el worker.');
   const payload = job.data as {
-    projectId: string; episodeId?: string; profileId?: string;
+    projectId: string; episodeId?: string; profileId?: string; audioStorageKey?: string; subtitleStorageKey?: string;
     scenes: Array<{ storageKey: string; duration: number }>;
   };
   if (!payload.scenes?.length) throw new Error('El render necesita al menos una escena.');
@@ -30,6 +30,20 @@ async function render(job: Job) {
   await mkdir(temp, { recursive: true });
   try {
     const scenes = [];
+    let audioPath: string | undefined;
+    let subtitlePath: string | undefined;
+    if (payload.audioStorageKey) {
+      const { data: audio, error: audioError } = await supabase.storage.from('media').download(payload.audioStorageKey);
+      if (audioError || !audio) throw audioError || new Error('No se pudo descargar el audio.');
+      audioPath = path.join(temp, 'voice.m4a');
+      await writeFile(audioPath, Buffer.from(await audio.arrayBuffer()));
+    }
+    if (payload.subtitleStorageKey) {
+      const { data: subtitle, error: subtitleError } = await supabase.storage.from('media').download(payload.subtitleStorageKey);
+      if (subtitleError || !subtitle) throw subtitleError || new Error('No se pudieron descargar los subtítulos.');
+      subtitlePath = path.join(temp, 'subtitles.srt');
+      await writeFile(subtitlePath, Buffer.from(await subtitle.arrayBuffer()));
+    }
     for (let i = 0; i < payload.scenes.length; i++) {
       const source = payload.scenes[i];
       const { data, error } = await supabase.storage.from('media').download(source.storageKey);
@@ -42,7 +56,7 @@ async function render(job: Job) {
 
     const outputPath = path.join(temp, 'render.mp4');
     await renderVideo({
-      outputPath, scenes, width: profile.width, height: profile.height, fps: Math.min(profile.maxFps, 30),
+      outputPath, scenes, width: profile.width, height: profile.height, fps: Math.min(profile.maxFps, 30), audioPath, subtitlePath,
       onProgress: async p => job.updateProgress(Math.min(95, 20 + Math.floor(p * 0.75))),
     });
 
