@@ -52,13 +52,11 @@ export const CreatorEpisodeScreen:React.FC=()=>{
  };
  const saveEpisodeMedia=async(kind:string,value:string)=>{try{const patch=kind==='audio'?{audioStorageKey:value}:{subtitleStorageKey:value};await api('/api/creator/episodes/'+episodeId,{method:'PATCH',body:JSON.stringify({metadata:{...(episode?.metadata||{}),...patch}})});setEpisode((e:any)=>e?{...e,metadata:{...(e.metadata||{}),...patch}}:e);}catch(e){setError(e instanceof Error?e.message:'No se pudo guardar el recurso');}};
  const startRender=async()=>{
-  if(!projectId||!scenes.length)return;
-  const images=media.filter(m=>m.kind==='image');
-  if(!images.length){setError('Sube al menos una imagen para renderizar.');return;}
+  if(!projectId||!episodeId||!scenes.length)return;
+  if(scenes.some(s=>!selectedImages[s.id])){setError('Asigna una imagen a cada escena antes de renderizar.');return;}
   setRendering(true);setError('');
   try{
-   const renderScenes=scenes.map((s,i)=>({storageKey:selectedImages[s.id]||images[i%images.length].storage_key,duration:sceneDurations[s.id]||5}));
-   const j=await api('/api/jobs/render',{method:'POST',body:JSON.stringify({projectId,episodeId,profileId:exportProfile,scenes:renderScenes,audioStorageKey:selectedAudio||undefined,subtitleStorageKey:selectedSubtitle||undefined})});
+   const j=await api('/api/jobs/render',{method:'POST',body:JSON.stringify({projectId,episodeId,profileId:exportProfile})});
    setRenderJob(j); pollJob(j.dbJobId);
   }catch(e){setError(e instanceof Error?e.message:'No se pudo iniciar el render');setRendering(false)}
  };
