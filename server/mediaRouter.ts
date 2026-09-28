@@ -38,8 +38,8 @@ function safeKey(value: unknown): string | null {
  * Supabase mode: authenticates the caller, creates a 2-minute signed Storage URL
  * and redirects to it. Local mode: reads from the server filesystem.
  *
- * Authorization/entitlement rules will become project/episode-aware in Phase 6.
- * For Phase 0, authentication is the security boundary.
+ * Creator media is owner-scoped by creator_media.storage_key. Published/consumer
+ * entitlement rules can be layered separately without weakening creator isolation.
  */
 export function createMediaRouter(
   store: MediaStore,
@@ -52,6 +52,18 @@ export function createMediaRouter(
     if (!key) return res.status(400).json({ error: 'Clave de medio inválida.' });
 
     try {
+      if (supabaseAdmin && req.userId && key.startsWith('projects/')) {
+        const { data: media, error: mediaError } = await supabaseAdmin
+          .from('creator_media')
+          .select('id, owner_id, storage_key')
+          .eq('storage_key', key)
+          .maybeSingle();
+        if (mediaError) throw mediaError;
+        if (media && media.owner_id !== req.userId) {
+          return res.status(403).json({ error: 'No tienes acceso a este medio.' });
+        }
+      }
+
       if (store.getSignedUrl) {
         const signedUrl = await store.getSignedUrl(key, 120);
         return res.redirect(302, signedUrl);
