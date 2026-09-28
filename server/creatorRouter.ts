@@ -109,6 +109,10 @@ export function createCreatorRouter(admin: SupabaseClient | null, production: bo
     if (typeof req.body?.title === 'string') patch.title = clean(req.body.title, 200);
     if (typeof req.body?.description === 'string') patch.description = clean(req.body.description, 2000);
     if (req.body?.script !== undefined) patch.script = req.body.script;
+    if (req.body?.metadata && typeof req.body.metadata === 'object') {
+      const { data: existing } = await admin.from('creator_episodes').select('metadata').eq('id', req.params.episodeId).eq('owner_id', req.userId).single();
+      patch.metadata = { ...(existing?.metadata || {}), ...req.body.metadata };
+    }
     const { data, error } = await admin.from('creator_episodes').update(patch).eq('id', req.params.episodeId).eq('owner_id', req.userId).select('*').single();
     if (error || !data) return res.status(404).json({ error: 'No se pudo actualizar el episodio.' });
     res.json({ episode: data });
@@ -148,6 +152,17 @@ export function createCreatorRouter(admin: SupabaseClient | null, production: bo
     const { data, error } = await admin.from('creator_scenes').update(patch).eq('id', existing.id).eq('owner_id', req.userId).select('*').single();
     if (error || !data) return res.status(500).json({ error: 'No se pudo actualizar la escena.' });
     res.json({ scene: data });
+  });
+
+  router.delete('/media/:mediaId', async (req: AuthRequest, res) => {
+    if (!admin) return res.status(404).json({ error: 'Medio no encontrado.' });
+    const { data: media } = await admin.from('creator_media').select('*').eq('id', req.params.mediaId).eq('owner_id', req.userId).single();
+    if (!media) return res.status(404).json({ error: 'Medio no encontrado.' });
+    const { error: storageError } = await admin.storage.from('media').remove([media.storage_key]);
+    if (storageError) return res.status(500).json({ error: 'No se pudo eliminar el archivo.' });
+    const { error } = await admin.from('creator_media').delete().eq('id', media.id).eq('owner_id', req.userId);
+    if (error) return res.status(500).json({ error: 'No se pudo eliminar el recurso.' });
+    res.status(204).send();
   });
 
   router.get('/projects/:projectId/media', async (req: AuthRequest, res) => {
