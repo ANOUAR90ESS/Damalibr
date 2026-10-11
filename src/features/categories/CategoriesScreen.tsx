@@ -2,9 +2,10 @@ import React, { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useCatalogStore } from '../../stores/useCatalogStore';
 import { Book } from '../../types';
-import { Search, Trophy, Filter, Star, Clock, Sparkles } from 'lucide-react';
+import { Search, Trophy, Filter, Star, Clock, Sparkles, LayoutGrid, List } from 'lucide-react';
 import { TopNavBar } from '../navigation/TopNavBar';
 import { useAuthStore } from '../../stores/useAuthStore';
+import { CatalogSort, CATALOG_SORT_OPTIONS, sortBooks } from '../../lib/catalogSort';
 
 export const CategoriesScreen: React.FC = () => {
   const { books } = useCatalogStore();
@@ -15,6 +16,8 @@ export const CategoriesScreen: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGenre, setSelectedGenre] = useState<string>('todos');
   const [selectedEra, setSelectedEra] = useState<string>('todas');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [sortBy, setSortBy] = useState<CatalogSort>('relevance');
   const [rankingTimeframe, setRankingTimeframe] = useState<'dia' | 'semana' | 'mes' | 'ano'>('semana');
 
   const genres = ['todos', 'Aventura', 'Tragedia', 'Romance', 'Drama', 'Gótico', 'Sátira', 'Realismo'];
@@ -43,8 +46,8 @@ export const CategoriesScreen: React.FC = () => {
       list = list.filter(b => b.era === selectedEra);
     }
 
-    return list;
-  }, [books, searchQuery, selectedGenre, selectedEra, user.kids_mode_enabled]);
+    return sortBooks(list, sortBy);
+  }, [books, searchQuery, selectedGenre, selectedEra, sortBy, user.kids_mode_enabled]);
 
   // Sorted books for rankings
   const rankedBooks = useMemo(() => {
@@ -159,8 +162,44 @@ export const CategoriesScreen: React.FC = () => {
 
             {/* Results Grid */}
             <div className="space-y-3 pt-2">
-              <div className="flex justify-between items-center text-xs text-slate-400">
+              <div className="flex justify-between items-center gap-2 text-xs text-slate-400">
                 <span>{filteredBooks.length} obras encontradas</span>
+
+                <div className="flex items-center gap-1.5">
+                  <label htmlFor="catalog-sort" className="sr-only">Ordenar por</label>
+                  <select
+                    id="catalog-sort"
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as CatalogSort)}
+                    className="px-2 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-200 focus:outline-none focus:border-amber-400"
+                  >
+                    {CATALOG_SORT_OPTIONS.map(o => (
+                      <option key={o.id} value={o.id}>{o.label}</option>
+                    ))}
+                  </select>
+
+                  <div className="flex p-0.5 bg-slate-900 border border-slate-800 rounded-lg" role="group" aria-label="Vista de resultados">
+                    {([
+                      { id: 'grid', label: 'Ver en cuadrícula', icon: LayoutGrid },
+                      { id: 'list', label: 'Ver en lista', icon: List },
+                    ] as const).map(v => {
+                      const Icon = v.icon;
+                      return (
+                        <button
+                          key={v.id}
+                          onClick={() => setViewMode(v.id)}
+                          aria-label={v.label}
+                          aria-pressed={viewMode === v.id}
+                          className={`p-1 rounded-md transition-colors ${
+                            viewMode === v.id ? 'bg-amber-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'
+                          }`}
+                        >
+                          <Icon className="w-3.5 h-3.5" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
               {filteredBooks.length === 0 ? (
@@ -173,6 +212,34 @@ export const CategoriesScreen: React.FC = () => {
                   >
                     Restablecer filtros
                   </button>
+                </div>
+              ) : viewMode === 'list' ? (
+                <div className="space-y-2.5">
+                  {filteredBooks.map(book => (
+                    <div
+                      key={book.id}
+                      onClick={() => navigate(`/book/${book.id}`)}
+                      className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800 hover:border-amber-500/40 flex items-center gap-3 cursor-pointer group transition-all"
+                    >
+                      <div className="w-12 h-16 rounded-xl overflow-hidden bg-slate-950 shrink-0">
+                        <img src={book.cover_url} alt={book.title} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="flex-1 min-w-0 space-y-0.5">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-xs text-slate-100 truncate group-hover:text-amber-300 transition-colors">
+                            {book.title}
+                          </h4>
+                          <span className="text-[10px] text-amber-400 font-bold flex items-center gap-0.5 shrink-0">
+                            <Star className="w-2.5 h-2.5 fill-amber-400" /> {book.rating}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 truncate">
+                          {book.author} · {book.year} · {book.era}
+                        </p>
+                        <p className="text-[11px] text-slate-500 line-clamp-1">{book.synopsis}</p>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">

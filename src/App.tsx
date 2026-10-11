@@ -15,6 +15,7 @@ import { UnlockModal } from './features/player/UnlockModal';
 import { CoinShopModal } from './features/player/CoinShopModal';
 import { VipModal } from './features/player/VipModal';
 import { NativeBridge } from './features/native/NativeBridge';
+import { ToastViewport } from './features/feedback/ToastViewport';
 
 function AppLayout() {
   const location = useLocation();
@@ -52,6 +53,9 @@ function AppLayout() {
 
       {/* Fixed Bottom Mobile Navigation Bar */}
       <BottomNavBar />
+
+      {/* Global toasts, above everything else */}
+      <ToastViewport />
     </div>
   );
 }

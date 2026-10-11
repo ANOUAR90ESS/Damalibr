@@ -5,6 +5,8 @@ import { BookFormat } from '../../types';
 import { usePlayerStore } from '../../stores/usePlayerStore';
 import { useLibraryStore } from '../../stores/useLibraryStore';
 import { useWalletStore } from '../../stores/useWalletStore';
+import { showToast } from '../../stores/useToastStore';
+import { BookReviews } from './BookReviews';
 import { 
   ArrowLeft, Play, Bookmark, Download, Star, Clock, 
   Lock, Check, Clapperboard, Film, Sparkles, Volume2 
@@ -17,7 +19,6 @@ export const BookDetailScreen: React.FC = () => {
   const { playEpisode } = usePlayerStore();
   const { items, progress, toggleBookmark, downloadBook, downloads, isBookDownloaded } = useLibraryStore();
   const { isEpisodeAccessible, openUnlockModal } = useWalletStore();
-  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const [selectedFormat, setSelectedFormat] = useState<BookFormat>('drama');
 
@@ -34,11 +35,10 @@ export const BookDetailScreen: React.FC = () => {
 
   // Only episodes the user can already watch are saved, so downloads never bypass the paywall.
   const handleDownload = async () => {
-    setDownloadError(null);
     try {
       await downloadBook(book.id, episodes.filter(isEpisodeAccessible));
     } catch (e) {
-      setDownloadError(e instanceof Error ? e.message : 'No se pudo descargar.');
+      showToast(e instanceof Error ? e.message : 'No se pudo descargar.', 'error', 0);
     }
   };
 
@@ -104,13 +104,6 @@ export const BookDetailScreen: React.FC = () => {
           </button>
         </div>
       </div>
-
-      {downloadError && (
-        <div role="alert" className="fixed bottom-20 left-4 right-4 z-40 max-w-md mx-auto p-3 rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl text-xs text-slate-200 flex justify-between gap-2">
-          <span>{downloadError}</span>
-          <button onClick={() => setDownloadError(null)} aria-label="Cerrar aviso" className="text-slate-500 hover:text-white">✕</button>
-        </div>
-      )}
 
       {/* Hero Backdrop & Book Cover */}
       <div className="relative w-full h-80 sm:h-96 overflow-hidden">
@@ -325,6 +318,9 @@ export const BookDetailScreen: React.FC = () => {
             })}
           </div>
         </div>
+
+        {/* Reader reviews */}
+        <BookReviews bookId={book.id} bookTitle={book.title} />
       </div>
     </div>
   );
