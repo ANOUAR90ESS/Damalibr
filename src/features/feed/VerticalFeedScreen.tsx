@@ -5,6 +5,7 @@ import { Episode, Book, Adaptation, ScriptLine } from '../../types';
 import { usePlayerStore } from '../../stores/usePlayerStore';
 import { useLibraryStore } from '../../stores/useLibraryStore';
 import { useWalletStore } from '../../stores/useWalletStore';
+import { showToast } from '../../stores/useToastStore';
 import { 
   Heart, Bookmark, Share2, MessageSquare, Play, Pause, 
   Volume2, VolumeX, Maximize2, AlertCircle, ChevronUp, ChevronDown 
@@ -50,7 +51,6 @@ export const VerticalFeedScreen: React.FC = () => {
     'ep-c-1': 8910,
     'ep-r-1': 7340,
   });
-  const [showShareToast, setShowShareToast] = useState(false);
   const [activeSubtitle, setActiveSubtitle] = useState<ScriptLine | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -151,8 +151,7 @@ export const VerticalFeedScreen: React.FC = () => {
       }).catch(() => {});
     } else {
       navigator.clipboard?.writeText(window.location.href);
-      setShowShareToast(true);
-      setTimeout(() => setShowShareToast(false), 2500);
+      showToast('¡Enlace copiado al portapapeles!', 'success', 2500);
     }
   };
 
@@ -353,13 +352,6 @@ export const VerticalFeedScreen: React.FC = () => {
             )}
           </div>
         </div>
-
-        {/* Share Toast */}
-        {showShareToast && (
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 px-4 py-2 rounded-xl bg-slate-900 border border-amber-500/40 text-amber-200 text-xs font-bold shadow-2xl animate-in fade-in duration-150">
-            ¡Enlace copiado al portapapeles!
-          </div>
-        )}
       </div>
     </div>
   );
